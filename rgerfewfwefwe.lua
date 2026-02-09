@@ -1670,9 +1670,19 @@ end
 			local DropdownTitle = Instance.new('TextLabel', NewDropdown)
 			local ToggleFrame = Instance.new('TextButton', NewDropdown)
 			local UICorner_2 = Instance.new('UICorner', ToggleFrame)
-			local ToggleContent = Instance.new('Frame', ToggleFrame)
+			local ToggleContent = Instance.new('ScrollingFrame', ToggleFrame)
 			local UICorner_3 = Instance.new('UICorner', ToggleContent)
 			local UIListLayout = Instance.new('UIListLayout', ToggleContent)
+
+            UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	ToggleContent.CanvasSize = UDim2.new(
+		0,
+		0,
+		0,
+		UIListLayout.AbsoluteContentSize.Y + 5
+	)
+end)
+
 			local DropdownTitle_2 = Instance.new('TextLabel', ToggleFrame)
 			local Icon = Instance.new('ImageLabel', ToggleFrame)
 			--
@@ -1716,6 +1726,12 @@ end
 			ToggleContent.BorderColor3 = Color3.new(0,0,0)
 			ToggleContent.ZIndex = 54
 			ToggleContent.ClipsDescendants = true
+			ToggleContent.ScrollBarImageTransparency = 0.4
+            ToggleContent.ScrollBarThickness = 4
+            ToggleContent.ScrollingDirection = Enum.ScrollingDirection.Y
+            ToggleContent.AutomaticCanvasSize = Enum.AutomaticSize.None
+            ToggleContent.CanvasSize = UDim2.new(0,0,0,0)
+
 			--
 			UICorner_3.CornerRadius = UDim.new(0,4)
 			--
@@ -1755,7 +1771,12 @@ end
 					NewDropdown.ZIndex = 55
 					game:GetService("TweenService"):Create(Icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Rotation = 180}):Play()
 					game:GetService("TweenService"):Create(Icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageColor3 = Color3.fromRGB(200,200,200)}):Play()
-					game:GetService("TweenService"):Create(ToggleContent, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,0,Count * 22)}):Play()
+					game:GetService("TweenService"):Create(
+	                ToggleContent,
+	                TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+	                {Size = UDim2.new(1,0,0,math.min(Count * 22, 150))}
+                    ):Play()
+
 				else
 					game:GetService("TweenService"):Create(Icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Rotation = 0}):Play()
 					game:GetService("TweenService"):Create(Icon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {ImageColor3 = Color3.fromRGB(120,120,120)}):Play()
