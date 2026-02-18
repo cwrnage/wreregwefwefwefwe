@@ -2048,8 +2048,9 @@ end
                 
                 items[ "textbox" ] = library:create( "TextBox" , {
                     FontFace = library.font;
-                    Active = false;
-                    Selectable = false;
+                    Active = true;
+                    Selectable = true;
+                    ClearTextOnFocus = false;
                     PlaceholderText = cfg.placeholder;
                     TextSize = 10;
                     Size = dim2(1, 0, 1, 0);
