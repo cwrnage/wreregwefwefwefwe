@@ -422,15 +422,8 @@ do
 
 		local function update()
 
-			local palPos = Vector2.new(
-				ImageButton.AbsolutePosition.X,
-				ImageButton.AbsolutePosition.Y
-			)
-
-			local huePos = Vector2.new(
-				HueBar.AbsolutePosition.X,
-				HueBar.AbsolutePosition.Y
-			)
+			local palPos = ImageButton.AbsolutePosition
+			local huePos = HueBar.AbsolutePosition
 
 			local palSize = ImageButton.AbsoluteSize
 			local hueSize = HueBar.AbsoluteSize
@@ -452,19 +445,8 @@ do
 			ImageButton.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 			ColorpickerFrame.BackgroundColor3 = color
 
-			SVSlider.Position = UDim2.new(
-				math.clamp(1 - s, 0, 1),
-				0,
-				math.clamp(1 - v, 0, 1),
-				0
-			)
-
-			HueSlider.Position = UDim2.new(
-				math.clamp(h, 0, 1),
-				-5,
-				0.5,
-				0
-			)
+			SVSlider.Position = UDim2.new(1 - s, 0, 1 - v, 0)
+			HueSlider.Position = UDim2.new(h, -5, 0.5, 0)
 
 			if flag then
 				Library.Flags[flag] = color
@@ -539,29 +521,59 @@ do
 		end)
 
 		------------------------------------------------
-		-- Open / Close
+		-- Open / Close (FIXED)
 		------------------------------------------------
 
+		local function ClosePicker()
+			Colorpicker.Visible = false
+			parent.ZIndex = 1
+			Library.Cooldown = false
+		end
+
+		-- Toggle open
 		ColorpickerFrame.MouseButton1Down:Connect(function()
 
-			if not Colorpicker.Visible then
+			if Colorpicker.Visible then
+				ClosePicker()
+				return
+			end
 
-				Colorpicker.Position = UDim2.fromOffset(
-					ColorpickerFrame.AbsolutePosition.X - 100,
-					ColorpickerFrame.AbsolutePosition.Y
-				)
+			Colorpicker.Position = UDim2.fromOffset(
+				ColorpickerFrame.AbsolutePosition.X - 100,
+				ColorpickerFrame.AbsolutePosition.Y
+			)
 
-				Colorpicker.Visible = true
-				parent.ZIndex = 100
-				Library.Cooldown = true
+			Colorpicker.Visible = true
+			parent.ZIndex = 100
+			Library.Cooldown = true
+		end)
 
+		-- Click outside to close
+		UIS.InputBegan:Connect(function(i)
+
+			if not Colorpicker.Visible then return end
+
+			if i.UserInputType == Enum.UserInputType.MouseButton1
+			or i.UserInputType == Enum.UserInputType.Touch then
+
+				local pos = i.Position
+
+				local framePos = Colorpicker.AbsolutePosition
+				local frameSize = Colorpicker.AbsoluteSize
+
+				if pos.X < framePos.X
+				or pos.X > framePos.X + frameSize.X
+				or pos.Y < framePos.Y
+				or pos.Y > framePos.Y + frameSize.Y then
+
+					ClosePicker()
+				end
 			end
 		end)
 
 		return {}, Colorpicker
 	end
 end
-
 
 	function Library:updateNotifsPositions(position)
 		for i, v in pairs(Library.Notifs) do 
