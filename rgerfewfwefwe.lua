@@ -753,7 +753,7 @@ do
 			end
 			--
 			local Window = {
-				Size = Properties.Size or UDim2.new(0,500,0,450),
+				Size = Properties.Size or UDim2.new(0,520,0,450),
 				Pages = {},
 				PageAxis = 0,
 				Dragging = { false, UDim2.new(0, 0, 0, 0) },
