@@ -299,350 +299,268 @@ do
 	end
 
 	-- // Colorpicker Element
-	do
-		function Library:NewPicker(name, default, parent, count, flag, callback)
-			
-			local UIS = game:GetService("UserInputService")
-            local mouse_position = Vector2.new(0,0)
+do
+	function Library:NewPicker(name, default, parent, count, flag, callback)
 
-			UIS.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement then
-            mouse_position = input.Position
-            elseif input.UserInputType == Enum.UserInputType.Touch then
-            mouse_position = input.Position
-          end
-        end)
+		local UIS = game:GetService("UserInputService")
+		local TweenService = game:GetService("TweenService")
 
-           UIS.InputBegan:Connect(function(input)
-           if input.UserInputType == Enum.UserInputType.Touch then
-           mouse_position = input.Position
-           end
-        end)
-			-- // Instances
-			local ColorpickerFrame = Instance.new("TextButton")
-			ColorpickerFrame.Name = "Colorpicker_frame"
-			ColorpickerFrame.BackgroundColor3 = default
-			ColorpickerFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			ColorpickerFrame.BorderSizePixel = 0
-			if count == 1 then
-				ColorpickerFrame.Position = UDim2.new(1, - (count * 20),0.5,0)
-			else
-				ColorpickerFrame.Position = UDim2.new(1, - (count * 20) - (count * 4),0.5,0)
+		-- Always Vector2
+		local mouse_position = Vector2.new(0, 0)
+
+		------------------------------------------------
+		-- Input Handler (Safe PC + Mobile)
+		------------------------------------------------
+
+		local function setMousePos(pos)
+			if typeof(pos) == "Vector3" then
+				mouse_position = Vector2.new(pos.X, pos.Y)
+			elseif typeof(pos) == "Vector2" then
+				mouse_position = pos
 			end
-			ColorpickerFrame.Size = UDim2.new(0, 20, 0, 20)
-			ColorpickerFrame.AnchorPoint = Vector2.new(0,0.5)
-			ColorpickerFrame.Text = ""
-			ColorpickerFrame.AutoButtonColor = false
+		end
 
-			local UICorner = Instance.new("UICorner")
-			UICorner.Name = "UICorner"
-			UICorner.CornerRadius = UDim.new(0, 4)
-			UICorner.Parent = ColorpickerFrame
+		UIS.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+				setMousePos(input.Position)
+			end
+		end)
 
-			local UIStroke = Instance.new("UIStroke")
-			UIStroke.Name = "UIStroke"
-			UIStroke.Color = Color3.fromRGB(40, 40, 40)
-			UIStroke.Parent = ColorpickerFrame
+		UIS.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				setMousePos(input.Position)
+			end
+		end)
 
-			ColorpickerFrame.Parent = parent
+		------------------------------------------------
+		-- Instances
+		------------------------------------------------
 
-			local Colorpicker = Instance.new("TextButton")
-			Colorpicker.Name = "Colorpicker"
-			Colorpicker.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-			Colorpicker.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			Colorpicker.BorderSizePixel = 0
-			Colorpicker.Position = UDim2.new(0, ColorpickerFrame.AbsolutePosition.X - 100, 0, ColorpickerFrame.AbsolutePosition.Y - 50)
-			Colorpicker.Size = UDim2.new(0, 180, 0, 180)
-			Colorpicker.Parent = Library.ScreenGUI
-			Colorpicker.ZIndex = 100
-			Colorpicker.Visible = false
-			Colorpicker.Text = ""
-			Colorpicker.AutoButtonColor = false
-			local H,S,V = default:ToHSV()
-			local ImageLabel = Instance.new("ImageLabel")
-			ImageLabel.Name = "ImageLabel"
-			ImageLabel.Image = "rbxassetid://11970108040"
-			ImageLabel.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-			ImageLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			ImageLabel.BorderSizePixel = 0
-			ImageLabel.Position = UDim2.new(0.0556, 0, 0.026, 0)
-			ImageLabel.Size = UDim2.new(0, 160, 0, 154)
-			ImageLabel.Parent = Colorpicker
+		local ColorpickerFrame = Instance.new("TextButton")
+		ColorpickerFrame.BackgroundColor3 = default
+		ColorpickerFrame.BorderSizePixel = 0
 
-			local UICorner = Instance.new("UICorner")
-			UICorner.Name = "UICorner"
-			UICorner.CornerRadius = UDim.new(0, 6)
-			UICorner.Parent = Colorpicker
+		if count == 1 then
+			ColorpickerFrame.Position = UDim2.new(1, -(count * 20), 0.5, 0)
+		else
+			ColorpickerFrame.Position = UDim2.new(1, -(count * 20) - (count * 4), 0.5, 0)
+		end
 
-			local ImageButton = Instance.new("ImageButton")
-			ImageButton.Name = "ImageButton"
-			ImageButton.Image = "rbxassetid://14684562507"
-			ImageButton.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-			ImageButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			ImageButton.BorderSizePixel = 0
-			ImageButton.Position = UDim2.new(0.056, 0, 0.026, 0)
-			ImageButton.Size = UDim2.new(0, 160, 0, 154)
-			ImageButton.AutoButtonColor = false
+		ColorpickerFrame.Size = UDim2.new(0, 20, 0, 20)
+		ColorpickerFrame.AnchorPoint = Vector2.new(0, 0.5)
+		ColorpickerFrame.Text = ""
+		ColorpickerFrame.AutoButtonColor = false
+		ColorpickerFrame.Parent = parent
 
-			local SVSlider = Instance.new("Frame")
-			SVSlider.Name = "SV_slider"
-			SVSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			SVSlider.BackgroundTransparency = 1
-			SVSlider.ClipsDescendants = true
-			SVSlider.Position = UDim2.new(0.855, 0, 0.0966, 0)
-			SVSlider.Size = UDim2.new(0,7,0,7)
-			SVSlider.ZIndex = 3
+		Instance.new("UICorner", ColorpickerFrame).CornerRadius = UDim.new(0, 4)
 
-			local Val = Instance.new("ImageLabel")
-			Val.Name = "Val"
-			Val.Image = "http://www.roblox.com/asset/?id=14684563800"
-			Val.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			Val.BackgroundTransparency = 1
-			Val.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			Val.BorderSizePixel = 0
-			Val.Size = UDim2.new(1, 0, 1, 0)
-			Val.Parent = ImageButton
+		local Stroke = Instance.new("UIStroke", ColorpickerFrame)
+		Stroke.Color = Color3.fromRGB(40, 40, 40)
 
-			local UICorner1 = Instance.new("UICorner")
-			UICorner1.Name = "UICorner"
-			UICorner1.CornerRadius = UDim.new(0, 100)
-			UICorner1.Parent = SVSlider
+		------------------------------------------------
 
-			local UIStroke = Instance.new("UIStroke")
-			UIStroke.Name = "UIStroke"
-			UIStroke.Color = Color3.fromRGB(255, 255, 255)
-			UIStroke.Parent = SVSlider
+		local Colorpicker = Instance.new("TextButton")
+		Colorpicker.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+		Colorpicker.BorderSizePixel = 0
+		Colorpicker.Size = UDim2.new(0, 180, 0, 180)
+		Colorpicker.Parent = Library.ScreenGUI
+		Colorpicker.ZIndex = 100
+		Colorpicker.Visible = false
+		Colorpicker.Text = ""
+		Colorpicker.AutoButtonColor = false
 
-			SVSlider.Parent = ImageButton
+		Instance.new("UICorner", Colorpicker).CornerRadius = UDim.new(0, 6)
 
-			ImageButton.Parent = Colorpicker
+		------------------------------------------------
 
-			local ImageButton1 = Instance.new("ImageButton")
-			ImageButton1.Name = "ImageButton"
-			ImageButton1.Image = "http://www.roblox.com/asset/?id=16789872274"
-			ImageButton1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			ImageButton1.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			ImageButton1.BorderSizePixel = 0
-			ImageButton1.Position = UDim2.new(0.5, 0,0, 165)
-			ImageButton1.Size = UDim2.new(0, 160,0, 8)
-			ImageButton1.AutoButtonColor = false
-			ImageButton1.AnchorPoint = Vector2.new(0.5,0)
-			ImageButton1.BackgroundTransparency = 1
+		local h, s, v = default:ToHSV()
 
-			local Frame = Instance.new("Frame")
-			Frame.Name = "Frame"
-			Frame.BackgroundColor3 = Color3.fromRGB(254, 254, 254)
-			Frame.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			Frame.BorderSizePixel = 0
-			Frame.Position = UDim2.new(0.926, 0,0.5, 0)
-			Frame.Size = UDim2.new(0, 12,0, 12)
-			Frame.AnchorPoint = Vector2.new(0,0.5)
-			Frame.ZIndex = 45
+		local ImageButton = Instance.new("ImageButton")
+		ImageButton.Image = "rbxassetid://14684562507"
+		ImageButton.Position = UDim2.new(0.056, 0, 0.026, 0)
+		ImageButton.Size = UDim2.new(0, 160, 0, 154)
+		ImageButton.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		ImageButton.AutoButtonColor = false
+		ImageButton.Parent = Colorpicker
 
-			local UICorner2 = Instance.new("UICorner")
-			UICorner2.Name = "UICorner"
-			UICorner2.Parent = Frame
-			UICorner2.CornerRadius = UDim.new(1,0)
+		local SVSlider = Instance.new("Frame")
+		SVSlider.Size = UDim2.new(0, 7, 0, 7)
+		SVSlider.BackgroundTransparency = 1
+		SVSlider.Parent = ImageButton
 
-			local UICorner3 = Instance.new("UICorner")
-			UICorner3.Name = "UICorner"
-			UICorner3.Parent = ImageButton1
+		Instance.new("UICorner", SVSlider).CornerRadius = UDim.new(1, 0)
 
-			Frame.Parent = ImageButton1
+		local Stroke2 = Instance.new("UIStroke", SVSlider)
+		Stroke2.Color = Color3.fromRGB(255, 255, 255)
 
-			ImageButton1.Parent = Colorpicker
+		------------------------------------------------
 
-			-- // Connections
-			local mouseover = false
-			local hue, sat, val = default:ToHSV()
-			local hsv = default:ToHSV()
-			local oldcolor = hsv
-			local slidingsaturation = false
-			local slidinghue = false
-			local slidingalpha = false
-            local lastInput = nil
+		local HueBar = Instance.new("ImageButton")
+		HueBar.Image = "http://www.roblox.com/asset/?id=16789872274"
+		HueBar.Position = UDim2.new(0.5, 0, 0, 165)
+		HueBar.Size = UDim2.new(0, 160, 0, 8)
+		HueBar.AnchorPoint = Vector2.new(0.5, 0)
+		HueBar.BackgroundTransparency = 1
+		HueBar.AutoButtonColor = false
+		HueBar.Parent = Colorpicker
 
-			local function update()
-				local function getInputPosition(input)
-	            if input.UserInputType == Enum.UserInputType.Touch then
-		        return input.Position
-	        else
-		        local pos = UIS:GetMouseLocation()
-		        return Vector2.new(pos.X, pos.Y - 30)
-	           end
-            end
-				local relative_palette = (mouse_position - ImageButton.AbsolutePosition)
-				local relative_hue     = (mouse_position - ImageButton1.AbsolutePosition)
-				--
-				if slidingsaturation then
-					sat = math.clamp(1 - relative_palette.X / ImageButton.AbsoluteSize.X, 0, 1)
-					val = math.clamp(1 - relative_palette.Y / ImageButton.AbsoluteSize.Y, 0, 1)
-				elseif slidinghue then
-					hue = math.clamp(relative_hue.X / ImageButton.AbsoluteSize.X, 0, 1)
-				end
+		local HueSlider = Instance.new("Frame")
+		HueSlider.Size = UDim2.new(0, 12, 0, 12)
+		HueSlider.AnchorPoint = Vector2.new(0, 0.5)
+		HueSlider.BackgroundColor3 = Color3.new(1, 1, 1)
+		HueSlider.Parent = HueBar
 
-				hsv = Color3.fromHSV(hue, sat, val)
-				TweenService:Create(SVSlider, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(math.clamp(1 - sat, 0.000, 1 - 0.055), 0, math.clamp(1 - val, 0.000, 1 - 0.045), 0)}):Play()
-				ImageButton.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-				ColorpickerFrame.BackgroundColor3 = hsv
+		Instance.new("UICorner", HueSlider).CornerRadius = UDim.new(1, 0)
 
-				TweenService:Create(Frame, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(math.clamp(hue, 0.000, 0.982),-5,0.5,0)}):Play()
+		------------------------------------------------
+		-- Logic
+		------------------------------------------------
 
-				if flag then
-					Library.Flags[flag] = Color3.fromRGB(hsv.r * 255, hsv.g * 255, hsv.b * 255)
-				end
+		local draggingSV = false
+		local draggingHue = false
 
-				callback(Color3.fromRGB(hsv.r * 255, hsv.g * 255, hsv.b * 255))
+		local function update()
+
+			local palPos = Vector2.new(
+				ImageButton.AbsolutePosition.X,
+				ImageButton.AbsolutePosition.Y
+			)
+
+			local huePos = Vector2.new(
+				HueBar.AbsolutePosition.X,
+				HueBar.AbsolutePosition.Y
+			)
+
+			local palSize = ImageButton.AbsoluteSize
+			local hueSize = HueBar.AbsoluteSize
+
+			local relPal = mouse_position - palPos
+			local relHue = mouse_position - huePos
+
+			if draggingSV then
+				s = math.clamp(1 - relPal.X / palSize.X, 0, 1)
+				v = math.clamp(1 - relPal.Y / palSize.Y, 0, 1)
 			end
 
-			local function set(color)
-				if type(color) == "table" then
-					color = Color3.fromHSV(color[1], color[2], color[3])
-				end
-				if type(color) == "string" then
-					color = Color3.fromHex(color)
-				end
-
-				local oldcolor = hsv
-
-				hue, sat, val = color:ToHSV()
-				hsv = Color3.fromHSV(hue, sat, val)
-
-				if hsv ~= oldcolor then
-					ColorpickerFrame.BackgroundColor3 = hsv
-					TweenService:Create(SVSlider, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(math.clamp(1 - sat, 0.000, 1 - 0.055), 0, math.clamp(1 - val, 0.000, 1 - 0.045), 0)}):Play()
-					ImageButton.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-					TweenService:Create(Frame, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(math.clamp(hue, 0.000, 0.982),-5,0.5,0)}):Play()
-
-					if flag then
-						Library.Flags[flag] = Color3.fromRGB(hsv.r * 255, hsv.g * 255, hsv.b * 255)
-					end
-
-					callback(Color3.fromRGB(hsv.r * 255, hsv.g * 255, hsv.b * 255))
-				end
+			if draggingHue then
+				h = math.clamp(relHue.X / hueSize.X, 0, 1)
 			end
 
-			Flags[flag] = set
+			local color = Color3.fromHSV(h, s, v)
 
-			set(default)
+			ImageButton.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+			ColorpickerFrame.BackgroundColor3 = color
 
-			ImageButton.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-					slidingsaturation = true
-                    mouse_position = input.Position
-                    update()
-				end
-			end)
+			SVSlider.Position = UDim2.new(
+				math.clamp(1 - s, 0, 1),
+				0,
+				math.clamp(1 - v, 0, 1),
+				0
+			)
 
-			ImageButton.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-                    or input.UserInputType == Enum.UserInputType.Touch then
-					slidingsaturation = false
+			HueSlider.Position = UDim2.new(
+				math.clamp(h, 0, 1),
+				-5,
+				0.5,
+				0
+			)
+
+			if flag then
+				Library.Flags[flag] = color
+			end
+
+			callback(color)
+		end
+
+		------------------------------------------------
+		-- Set
+		------------------------------------------------
+
+		local function set(color)
+
+			if typeof(color) == "table" then
+				color = Color3.fromHSV(color[1], color[2], color[3])
+			elseif typeof(color) == "string" then
+				color = Color3.fromHex(color)
+			end
+
+			h, s, v = color:ToHSV()
+			update()
+		end
+
+		Flags[flag] = set
+		set(default)
+
+		------------------------------------------------
+		-- Dragging
+		------------------------------------------------
+
+		ImageButton.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1
+			or i.UserInputType == Enum.UserInputType.Touch then
+				draggingSV = true
+				setMousePos(i.Position)
+				update()
+			end
+		end)
+
+		ImageButton.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1
+			or i.UserInputType == Enum.UserInputType.Touch then
+				draggingSV = false
+			end
+		end)
+
+		HueBar.InputBegan:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1
+			or i.UserInputType == Enum.UserInputType.Touch then
+				draggingHue = true
+				setMousePos(i.Position)
+				update()
+			end
+		end)
+
+		HueBar.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1
+			or i.UserInputType == Enum.UserInputType.Touch then
+				draggingHue = false
+			end
+		end)
+
+		UIS.InputChanged:Connect(function(i)
+			if draggingSV or draggingHue then
+				if i.UserInputType == Enum.UserInputType.MouseMovement
+				or i.UserInputType == Enum.UserInputType.Touch then
+					setMousePos(i.Position)
 					update()
 				end
-			end)
-
-			ImageButton1.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-					slidinghue = true
-                    mouse_position = input.Position
-                    update()
-				end
-			end)
-
-			ImageButton1.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1
-                or input.UserInputType == Enum.UserInputType.Touch then
-					slidinghue = false
-					update()
-				end
-			end)
-
-			Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement
-                or input.UserInputType == Enum.UserInputType.Touch then
-					if slidinghue then
-						update()
-					end
-
-					if slidingsaturation then
-						update()
-					end
-				end
-			end)
-
-			local colorpickertypes = {}
-
-			function colorpickertypes:Set(color, newalpha)
-				set(color, newalpha)
 			end
+		end)
 
-			Library:Connection(game:GetService("UserInputService").InputBegan, function(Input)
-				if Colorpicker.Visible and Input.UserInputType == Enum.UserInputType.MouseButton1 then
-					if not Library:IsMouseOverFrame(Colorpicker) and not Library:IsMouseOverFrame(ColorpickerFrame) then
-						Colorpicker.Position = UDim2.new(0, ColorpickerFrame.AbsolutePosition.X - 100, 0, ColorpickerFrame.AbsolutePosition.Y + 25)
-						TweenService:Create(Colorpicker, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
-						TweenService:Create(Colorpicker, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Position = UDim2.new(0, ColorpickerFrame.AbsolutePosition.X - 100, 0, ColorpickerFrame.AbsolutePosition.Y)}):Play()
-						task.spawn(function()
-							task.wait(0.1)
-							Colorpicker.Visible = false
-							parent.ZIndex = 1
-							Library.Cooldown = false
-						end)
-						for _,V in next, Colorpicker:GetDescendants() do
-							if V:IsA("Frame") or V:IsA("TextButton") or V:IsA("ScrollingFrame") then
-								TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
-								Library.VisValues[V] = V.BackgroundTransparency
-							elseif V:IsA("TextLabel") or V:IsA("TextBox") then
-								TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {TextTransparency = 1}):Play()
-								Library.VisValues[V] = V.TextTransparency
-							elseif V:IsA("ImageLabel") or V:IsA("ImageButton") then
-								TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {ImageTransparency = 1}):Play();
-								Library.VisValues[V] = V.ImageTransparency
-							elseif V:IsA("UIStroke") then
-								TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Transparency = 1}):Play()
-								Library.VisValues[V] = V.Transparency
-							end
-						end
-					end
-				end
-			end)
+		------------------------------------------------
+		-- Open / Close
+		------------------------------------------------
 
-			ColorpickerFrame.MouseButton1Down:Connect(function()
-				if Colorpicker.Visible == false then
-					Colorpicker.Position = UDim2.new(0, ColorpickerFrame.AbsolutePosition.X - 100, 0, ColorpickerFrame.AbsolutePosition.Y)
-					TweenService:Create(Colorpicker, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, ColorpickerFrame.AbsolutePosition.X - 100, 0, ColorpickerFrame.AbsolutePosition.Y + 25)}):Play()
-				end
+		ColorpickerFrame.MouseButton1Down:Connect(function()
+
+			if not Colorpicker.Visible then
+
+				Colorpicker.Position = UDim2.fromOffset(
+					ColorpickerFrame.AbsolutePosition.X - 100,
+					ColorpickerFrame.AbsolutePosition.Y
+				)
+
 				Colorpicker.Visible = true
 				parent.ZIndex = 100
 				Library.Cooldown = true
-				TweenService:Create(Colorpicker, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
-				for _,V in next, Colorpicker:GetDescendants() do
-					if V:IsA("Frame") or V:IsA("TextButton") or V:IsA("ScrollingFrame") then
-						TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {BackgroundTransparency = Library.VisValues[V]}):Play()
-					elseif V:IsA("TextLabel") or V:IsA("TextBox") then
-						TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {TextTransparency = Library.VisValues[V]}):Play()
-					elseif V:IsA("ImageLabel") or V:IsA("ImageButton") then
-						TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {ImageTransparency = Library.VisValues[V]}):Play();
-					elseif V:IsA("UIStroke") then
-						TweenService:Create(V, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Transparency = 0}):Play()
-					end
-				end
 
-				if slidinghue then
-					slidinghue = false
-				end
+			end
+		end)
 
-				if slidingsaturation then
-					slidingsaturation = false
-				end
-			end)
-
-			return colorpickertypes, Colorpicker
-		end
+		return {}, Colorpicker
 	end
+end
 
 
 	function Library:updateNotifsPositions(position)
