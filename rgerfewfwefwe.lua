@@ -301,6 +301,23 @@ do
 	-- // Colorpicker Element
 	do
 		function Library:NewPicker(name, default, parent, count, flag, callback)
+			
+			local UIS = game:GetService("UserInputService")
+            local mouse_position = Vector2.new(0,0)
+
+			UIS.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+            mouse_position = input.Position
+            elseif input.UserInputType == Enum.UserInputType.Touch then
+            mouse_position = input.Position
+          end
+        end)
+
+           UIS.InputBegan:Connect(function(input)
+           if input.UserInputType == Enum.UserInputType.Touch then
+           mouse_position = input.Position
+           end
+        end)
 			-- // Instances
 			local ColorpickerFrame = Instance.new("TextButton")
 			ColorpickerFrame.Name = "Colorpicker_frame"
@@ -443,10 +460,17 @@ do
 			local slidingsaturation = false
 			local slidinghue = false
 			local slidingalpha = false
+            local lastInput = nil
 
 			local function update()
-				local real_pos = game:GetService("UserInputService"):GetMouseLocation()
-				local mouse_position = Vector2.new(real_pos.X, real_pos.Y - 30)
+				local function getInputPosition(input)
+	            if input.UserInputType == Enum.UserInputType.Touch then
+		        return input.Position
+	        else
+		        local pos = UIS:GetMouseLocation()
+		        return Vector2.new(pos.X, pos.Y - 30)
+	           end
+            end
 				local relative_palette = (mouse_position - ImageButton.AbsolutePosition)
 				local relative_hue     = (mouse_position - ImageButton1.AbsolutePosition)
 				--
@@ -503,35 +527,42 @@ do
 			set(default)
 
 			ImageButton.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					slidingsaturation = true
-					update()
+                    mouse_position = input.Position
+                    update()
 				end
 			end)
 
 			ImageButton.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch then
 					slidingsaturation = false
 					update()
 				end
 			end)
 
 			ImageButton1.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					slidinghue = true
-					update()
+                    mouse_position = input.Position
+                    update()
 				end
 			end)
 
 			ImageButton1.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					slidinghue = false
 					update()
 				end
 			end)
 
 			Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement then
+				if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
 					if slidinghue then
 						update()
 					end
@@ -1585,29 +1616,34 @@ end
 			end
 			--
 			Library:Connection(NewSlider.InputBegan, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = true
 					Slide(input)
 				end
 			end)
 			Library:Connection(NewSlider.InputEnded, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = false
 				end
 			end)
 			Library:Connection(Fill.InputBegan, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = true
 					Slide(input)
 				end
 			end)
 			Library:Connection(Fill.InputEnded, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
 					Sliding = false
 				end
 			end)
 			Library:Connection(game:GetService("UserInputService").InputChanged, function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement then
+				if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
 					if Sliding then
 						Slide(input)
 					end
