@@ -835,6 +835,28 @@ end
 			Logo.Size = UDim2.fromOffset(90, 90)
 			Logo.Parent = Holder
 
+			-- TITLE TEXT
+            local Title = Instance.new("TextLabel")
+            Title.Name = "Title"
+
+            -- DEFAULT TEXT
+            Title.Text = "Serial | Rivals"
+            Title.Font = Enum.Font.GothamBold
+            Title.TextSize = 18
+            Title.TextColor3 = Color3.fromRGB(255,255,255)
+
+            -- STYLE
+            Title.BackgroundTransparency = 1
+            Title.BorderSizePixel = 0
+            Title.TextXAlignment = Enum.TextXAlignment.Left
+            Title.TextYAlignment = Enum.TextYAlignment.Center
+
+            -- POSITION (next to logo)
+            Title.Position = UDim2.fromOffset(105, 22)
+            Title.Size = UDim2.fromOffset(240, 30)
+
+            Title.Parent = Holder
+
 			local FadeThing = Instance.new("Frame")
 			FadeThing.Name = "FadeThing"
 			FadeThing.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
