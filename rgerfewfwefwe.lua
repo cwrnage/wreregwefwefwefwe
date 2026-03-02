@@ -840,7 +840,7 @@ end
             Title.Name = "Title"
 
             -- DEFAULT TEXT
-            Title.Text = "Serial | Rivals"
+            Title.Text = self.Config and self.Config.Title or "Serial | .gg/serialxyz"
             Title.Font = Enum.Font.GothamBold
             Title.TextSize = 18
             Title.TextColor3 = Color3.fromRGB(255,255,255)
