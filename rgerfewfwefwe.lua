@@ -628,7 +628,7 @@ do
 			-- // Outer glow/border frame
 			local Outline = Instance.new('Frame', ScreenGui)
 			Outline.Name = "Outline"
-			Outline.Position = UDim2.new(0.5, -10, 0.5, 0)
+			Outline.Position = UDim2.new(0.5, -60, 0.5, 0)
 			Outline.Size = UDim2.new(0,0,0,40)
 			Outline.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 			Outline.BorderColor3 = Color3.new(0,0,0)
@@ -2276,7 +2276,7 @@ do
 		-- // Watermark
 		function Library:Watermark(Properties)
 			local Watermark = {
-				Name = (Properties.Name or Properties.name or "pasted.one");
+				Name = (Properties.Name or Properties.name or "serial.xyz");
 				AnimateText = nil;
 			}
 			local Outline = Instance.new("Frame")
@@ -2321,13 +2321,13 @@ do
 
 			task.spawn(function()
 				while task.wait() do
-					for i = 1, #"pasted.one" do
-						Watermark.AnimateText = string.sub("pasted.one", 1, i) .. "";
+					for i = 1, #"serial.xyz" do
+						Watermark.AnimateText = string.sub("serial.xyz", 1, i) .. "";
 						Title.Text = Watermark.AnimateText .. " " .. Watermark.Name;
 						task.wait(0.4);
 					end;
-					for i = #"pasted.one" - 1, 1, -1 do
-						Watermark.AnimateText = string.sub("pasted.one", 1, i) .. "";
+					for i = #"serial.xyz" - 1, 1, -1 do
+						Watermark.AnimateText = string.sub("serial.xyz", 1, i) .. "";
 						Title.Text = Watermark.AnimateText .. " " .. Watermark.Name;
 						task.wait(0.4);
 					end;
