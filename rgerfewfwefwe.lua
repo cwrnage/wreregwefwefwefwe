@@ -628,7 +628,7 @@ do
 			-- // Outer glow/border frame
 			local Outline = Instance.new('Frame', ScreenGui)
 			Outline.Name = "Outline"
-			Outline.Position = UDim2.new(0.5,0,0.5,0)
+			Outline.Position = UDim2.new(0.5, -10, 0.5, 0)
 			Outline.Size = UDim2.new(0,0,0,40)
 			Outline.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
 			Outline.BorderColor3 = Color3.new(0,0,0)
@@ -783,7 +783,7 @@ do
 
 			-- Text block to the right of avatar — anchored top+left inside card
 			-- Avatar occupies 0..58px from left (8 margin + 42 avatar + 8 gap)
-			local textLeft = 8 + 42 + 8  -- 58
+			local textLeft = 50 -- manual control, slightly left
 
 			-- Player display name
 			local DisplayNameLabel = Instance.new("TextLabel", PlayerCard)
