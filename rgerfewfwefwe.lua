@@ -688,7 +688,7 @@ do
 			-- // Logo image at top of sidebar
 			local Logo = Instance.new("ImageLabel", Sidebar)
 			Logo.Name = "Logo"
-			Logo.Image = "http://www.roblox.com/asset/?id=17669613413"
+			Logo.Image = Properties.Icon or "http://www.roblox.com/asset/?id=17669613413"
 			Logo.ScaleType = Enum.ScaleType.Fit
 			Logo.BackgroundTransparency = 1
 			Logo.BorderSizePixel = 0
