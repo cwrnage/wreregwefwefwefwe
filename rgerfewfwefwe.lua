@@ -732,8 +732,8 @@ do
 			-- // Player card — pinned to the very bottom, same x-inset as tabs (8px each side)
 			local PlayerCard = Instance.new("Frame", Sidebar)
 			PlayerCard.Name = "PlayerCard"
-			PlayerCard.Position = UDim2.new(0, 8, 1, -(CARD_HEIGHT + CARD_MARGIN))
-			PlayerCard.Size = UDim2.new(1, -16, 0, CARD_HEIGHT)
+			PlayerCard.Position = UDim2.new(0, 4, 1, -(CARD_HEIGHT + CARD_MARGIN))
+            PlayerCard.Size = UDim2.new(1, -22, 0, CARD_HEIGHT)
 			PlayerCard.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 			PlayerCard.BorderSizePixel = 0
 			PlayerCard.ZIndex = 53
