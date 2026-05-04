@@ -75,7 +75,7 @@ do
 	}
 
 	-- // Ignores
-	local Flags = {} -- Ignore
+	local Flags = {}
 	local ColorHolders = {}
 
 	-- // Extension
@@ -654,6 +654,12 @@ do
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 10)
 
 			-- // Sidebar (left tab panel)
+			-- Player card height + bottom margin defines how tall the sidebar "footer" is
+			-- Card: 68px tall, 8px margin top, 8px margin bottom = 84px reserved at bottom
+			local CARD_HEIGHT = 68
+			local CARD_MARGIN = 8
+			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2  -- 84px
+
 			local Sidebar = Instance.new('Frame', Inline)
 			Sidebar.Name = "Sidebar"
 			Sidebar.Position = UDim2.new(0,0,0,0)
@@ -663,7 +669,7 @@ do
 			Sidebar.ZIndex = 52
 			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 10)
 
-			-- // Clip the right corners of sidebar (overlay to square them)
+			-- // Clip the right corners of sidebar
 			local SidebarClip = Instance.new("Frame", Sidebar)
 			SidebarClip.Name = "SidebarClip"
 			SidebarClip.Position = UDim2.new(1,-10,0,0)
@@ -680,7 +686,7 @@ do
 			})
 			SidebarGrad.Rotation = 90
 
-			-- // Logo image at top of sidebar (NO title text, just icon)
+			-- // Logo image at top of sidebar
 			local Logo = Instance.new("ImageLabel", Sidebar)
 			Logo.Name = "Logo"
 			Logo.Image = "http://www.roblox.com/asset/?id=17669613413"
@@ -701,11 +707,12 @@ do
 			LogoDivider.BorderSizePixel = 0
 			LogoDivider.ZIndex = 53
 
-			-- // Tab holder (scrollable)
+			-- // Tab holder — sits between logo divider and player card
+			-- top: 80px (below logo+divider), bottom: CARD_TOTAL from bottom
 			local Tabs = Instance.new('Frame', Sidebar)
 			Tabs.Name = "Tabs"
 			Tabs.Position = UDim2.new(0, 8, 0, 80)
-			Tabs.Size = UDim2.new(1, -16, 1, -175)
+			Tabs.Size = UDim2.new(1, -16, 1, -(80 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
@@ -714,6 +721,124 @@ do
 			local TabLayout = Instance.new('UIListLayout', Tabs)
 			TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 			TabLayout.Padding = UDim.new(0, 3)
+
+			-- // Divider above player card
+			local CardDivider = Instance.new("Frame", Sidebar)
+			CardDivider.Name = "CardDivider"
+			CardDivider.Position = UDim2.new(0, 12, 1, -(CARD_TOTAL + 1))
+			CardDivider.Size = UDim2.new(1, -24, 0, 1)
+			CardDivider.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+			CardDivider.BorderSizePixel = 0
+			CardDivider.ZIndex = 53
+
+			-- // Player card — pinned to the very bottom, same x-inset as tabs (8px each side)
+			local PlayerCard = Instance.new("Frame", Sidebar)
+			PlayerCard.Name = "PlayerCard"
+			PlayerCard.Position = UDim2.new(0, 8, 1, -(CARD_HEIGHT + CARD_MARGIN))
+			PlayerCard.Size = UDim2.new(1, -16, 0, CARD_HEIGHT)
+			PlayerCard.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+			PlayerCard.BorderSizePixel = 0
+			PlayerCard.ZIndex = 53
+			Instance.new("UICorner", PlayerCard).CornerRadius = UDim.new(0, 8)
+			local PlayerCardStroke = Instance.new("UIStroke", PlayerCard)
+			PlayerCardStroke.Color = Color3.fromRGB(35, 35, 35)
+			PlayerCardStroke.Thickness = 1
+
+			-- Player avatar — vertically centered in card
+			local AvatarFrame = Instance.new("Frame", PlayerCard)
+			AvatarFrame.Name = "AvatarFrame"
+			AvatarFrame.Position = UDim2.new(0, 8, 0.5, 0)
+			AvatarFrame.AnchorPoint = Vector2.new(0, 0.5)
+			AvatarFrame.Size = UDim2.fromOffset(42, 42)
+			AvatarFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+			AvatarFrame.BorderSizePixel = 0
+			AvatarFrame.ZIndex = 54
+			Instance.new("UICorner", AvatarFrame).CornerRadius = UDim.new(1, 0)
+			local AvatarStroke = Instance.new("UIStroke", AvatarFrame)
+			AvatarStroke.Color = Color3.fromRGB(50, 50, 50)
+
+			local AvatarImg = Instance.new("ImageLabel", AvatarFrame)
+			AvatarImg.Name = "Avatar"
+			AvatarImg.Size = UDim2.new(1, -4, 1, -4)
+			AvatarImg.Position = UDim2.fromOffset(2, 2)
+			AvatarImg.BackgroundTransparency = 1
+			AvatarImg.BorderSizePixel = 0
+			AvatarImg.ZIndex = 55
+			AvatarImg.Image = ""
+			Instance.new("UICorner", AvatarImg).CornerRadius = UDim.new(1, 0)
+
+			-- Try to load avatar thumbnail
+			task.spawn(function()
+				local success, result = pcall(function()
+					return Players:GetUserThumbnailAsync(
+						LocalPlayer.UserId,
+						Enum.ThumbnailType.HeadShot,
+						Enum.ThumbnailSize.Size60x60
+					)
+				end)
+				if success then
+					AvatarImg.Image = result
+				end
+			end)
+
+			-- Text block to the right of avatar — anchored top+left inside card
+			-- Avatar occupies 0..58px from left (8 margin + 42 avatar + 8 gap)
+			local textLeft = 8 + 42 + 8  -- 58
+
+			-- Player display name
+			local DisplayNameLabel = Instance.new("TextLabel", PlayerCard)
+			DisplayNameLabel.Name = "DisplayName"
+			DisplayNameLabel.Position = UDim2.new(0, textLeft, 0, 10)
+			DisplayNameLabel.Size = UDim2.new(1, -(textLeft + 8), 0, 15)
+			DisplayNameLabel.BackgroundTransparency = 1
+			DisplayNameLabel.Text = LocalPlayer.DisplayName
+			DisplayNameLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+			DisplayNameLabel.Font = Enum.Font.GothamBold
+			DisplayNameLabel.TextSize = 12
+			DisplayNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			DisplayNameLabel.ZIndex = 54
+			DisplayNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+			-- Username (smaller, dimmer)
+			local UsernameLabel = Instance.new("TextLabel", PlayerCard)
+			UsernameLabel.Name = "Username"
+			UsernameLabel.Position = UDim2.new(0, textLeft, 0, 27)
+			UsernameLabel.Size = UDim2.new(1, -(textLeft + 8), 0, 13)
+			UsernameLabel.BackgroundTransparency = 1
+			UsernameLabel.Text = "@" .. LocalPlayer.Name
+			UsernameLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+			UsernameLabel.Font = Enum.Font.Gotham
+			UsernameLabel.TextSize = 11
+			UsernameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			UsernameLabel.ZIndex = 54
+			UsernameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+			-- Executor badge
+			local ExecutorBadge = Instance.new("Frame", PlayerCard)
+			ExecutorBadge.Name = "ExecutorBadge"
+			ExecutorBadge.Position = UDim2.new(0, textLeft, 0, 44)
+			ExecutorBadge.Size = UDim2.new(0, 0, 0, 15)
+			ExecutorBadge.AutomaticSize = Enum.AutomaticSize.X
+			ExecutorBadge.BackgroundColor3 = Color3.fromRGB(255, 40, 40)
+			ExecutorBadge.BorderSizePixel = 0
+			ExecutorBadge.ZIndex = 54
+			Instance.new("UICorner", ExecutorBadge).CornerRadius = UDim.new(0, 4)
+			table.insert(Library.ThemeObjects, ExecutorBadge)
+
+			local BadgePad = Instance.new("UIPadding", ExecutorBadge)
+			BadgePad.PaddingLeft = UDim.new(0, 5)
+			BadgePad.PaddingRight = UDim.new(0, 5)
+
+			local ExecutorLabel = Instance.new("TextLabel", ExecutorBadge)
+			ExecutorLabel.Name = "ExecutorLabel"
+			ExecutorLabel.Size = UDim2.new(0, 0, 1, 0)
+			ExecutorLabel.AutomaticSize = Enum.AutomaticSize.X
+			ExecutorLabel.BackgroundTransparency = 1
+			ExecutorLabel.Text = Library:GetExecutor()
+			ExecutorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			ExecutorLabel.Font = Enum.Font.GothamBold
+			ExecutorLabel.TextSize = 10
+			ExecutorLabel.ZIndex = 55
 
 			-- // Main content holder
 			local Holder = Instance.new('Frame', Inline)
@@ -750,111 +875,6 @@ do
 			FadeThing.Size = UDim2.new(1, -16, 1, -16)
 			FadeThing.ZIndex = 55
 			FadeThing.Visible = false
-
-			-- // Player card at bottom of sidebar
-			local PlayerCard = Instance.new("Frame", Sidebar)
-			PlayerCard.Name = "PlayerCard"
-			PlayerCard.Position = UDim2.new(0, 8, 1, -88)
-			PlayerCard.Size = UDim2.new(1, -16, 0, 80)
-			PlayerCard.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-			PlayerCard.BorderSizePixel = 0
-			PlayerCard.ZIndex = 53
-			Instance.new("UICorner", PlayerCard).CornerRadius = UDim.new(0, 8)
-			local PlayerCardStroke = Instance.new("UIStroke", PlayerCard)
-			PlayerCardStroke.Color = Color3.fromRGB(35, 35, 35)
-			PlayerCardStroke.Thickness = 1
-
-			-- Player avatar
-			local AvatarFrame = Instance.new("Frame", PlayerCard)
-			AvatarFrame.Name = "AvatarFrame"
-			AvatarFrame.Position = UDim2.new(0, 8, 0.5, 0)
-			AvatarFrame.AnchorPoint = Vector2.new(0, 0.5)
-			AvatarFrame.Size = UDim2.fromOffset(46, 46)
-			AvatarFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
-			AvatarFrame.BorderSizePixel = 0
-			AvatarFrame.ZIndex = 54
-			Instance.new("UICorner", AvatarFrame).CornerRadius = UDim.new(1, 0)
-			local AvatarStroke = Instance.new("UIStroke", AvatarFrame)
-			AvatarStroke.Color = Color3.fromRGB(50, 50, 50)
-
-			local AvatarImg = Instance.new("ImageLabel", AvatarFrame)
-			AvatarImg.Name = "Avatar"
-			AvatarImg.Size = UDim2.new(1, -4, 1, -4)
-			AvatarImg.Position = UDim2.fromOffset(2, 2)
-			AvatarImg.BackgroundTransparency = 1
-			AvatarImg.BorderSizePixel = 0
-			AvatarImg.ZIndex = 55
-			AvatarImg.Image = ""
-			Instance.new("UICorner", AvatarImg).CornerRadius = UDim.new(1, 0)
-
-			-- Try to load avatar thumbnail
-			task.spawn(function()
-				local success, result = pcall(function()
-					return Players:GetUserThumbnailAsync(
-						LocalPlayer.UserId,
-						Enum.ThumbnailType.HeadShot,
-						Enum.ThumbnailSize.Size60x60
-					)
-				end)
-				if success then
-					AvatarImg.Image = result
-				end
-			end)
-
-			-- Player display name
-			local DisplayNameLabel = Instance.new("TextLabel", PlayerCard)
-			DisplayNameLabel.Name = "DisplayName"
-			DisplayNameLabel.Position = UDim2.new(0, 60, 0, 12)
-			DisplayNameLabel.Size = UDim2.new(1, -68, 0, 16)
-			DisplayNameLabel.BackgroundTransparency = 1
-			DisplayNameLabel.Text = LocalPlayer.DisplayName
-			DisplayNameLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-			DisplayNameLabel.Font = Enum.Font.GothamBold
-			DisplayNameLabel.TextSize = 12
-			DisplayNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-			DisplayNameLabel.ZIndex = 54
-			DisplayNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
-			-- Username (smaller, dimmer)
-			local UsernameLabel = Instance.new("TextLabel", PlayerCard)
-			UsernameLabel.Name = "Username"
-			UsernameLabel.Position = UDim2.new(0, 60, 0, 30)
-			UsernameLabel.Size = UDim2.new(1, -68, 0, 13)
-			UsernameLabel.BackgroundTransparency = 1
-			UsernameLabel.Text = "@" .. LocalPlayer.Name
-			UsernameLabel.TextColor3 = Color3.fromRGB(110, 110, 110)
-			UsernameLabel.Font = Enum.Font.Gotham
-			UsernameLabel.TextSize = 11
-			UsernameLabel.TextXAlignment = Enum.TextXAlignment.Left
-			UsernameLabel.ZIndex = 54
-			UsernameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-
-			-- Executor badge
-			local ExecutorBadge = Instance.new("Frame", PlayerCard)
-			ExecutorBadge.Name = "ExecutorBadge"
-			ExecutorBadge.Position = UDim2.new(0, 60, 0, 50)
-			ExecutorBadge.Size = UDim2.new(0, 0, 0, 16)
-			ExecutorBadge.AutomaticSize = Enum.AutomaticSize.X
-			ExecutorBadge.BackgroundColor3 = Color3.fromRGB(255, 40, 40)
-			ExecutorBadge.BorderSizePixel = 0
-			ExecutorBadge.ZIndex = 54
-			Instance.new("UICorner", ExecutorBadge).CornerRadius = UDim.new(0, 4)
-			table.insert(Library.ThemeObjects, ExecutorBadge)
-
-			local BadgePad = Instance.new("UIPadding", ExecutorBadge)
-			BadgePad.PaddingLeft = UDim.new(0, 5)
-			BadgePad.PaddingRight = UDim.new(0, 5)
-
-			local ExecutorLabel = Instance.new("TextLabel", ExecutorBadge)
-			ExecutorLabel.Name = "ExecutorLabel"
-			ExecutorLabel.Size = UDim2.new(0, 0, 1, 0)
-			ExecutorLabel.AutomaticSize = Enum.AutomaticSize.X
-			ExecutorLabel.BackgroundTransparency = 1
-			ExecutorLabel.Text = Library:GetExecutor()
-			ExecutorLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-			ExecutorLabel.Font = Enum.Font.GothamBold
-			ExecutorLabel.TextSize = 10
-			ExecutorLabel.ZIndex = 55
 
 			-- // Elements
 			Window.Elements = {
@@ -919,7 +939,7 @@ do
 				Elements = {},
 			}
 
-			-- // Tab button (full-width highlight style)
+			-- // Tab button
 			local TabButton = Instance.new("TextButton", Page.Window.Elements.TabHolder)
 			TabButton.Size = UDim2.new(1, 0, 0, 32)
 			TabButton.BackgroundColor3 = Color3.fromRGB(255,40,40)
@@ -929,7 +949,6 @@ do
 			TabButton.BorderSizePixel = 0
 			Instance.new("UICorner", TabButton).CornerRadius = UDim.new(0, 7)
 
-			-- Hover highlight layer
 			local HoverFill = Instance.new("Frame", TabButton)
 			HoverFill.Name = "HoverFill"
 			HoverFill.Size = UDim2.new(1,0,1,0)
@@ -939,7 +958,6 @@ do
 			HoverFill.ZIndex = TabButton.ZIndex
 			Instance.new("UICorner", HoverFill).CornerRadius = UDim.new(0,7)
 
-			-- Active fill (accent color, low opacity)
 			local ActiveFill = Instance.new("Frame", TabButton)
 			ActiveFill.Name = "ActiveFill"
 			ActiveFill.Size = UDim2.new(1,0,1,0)
@@ -950,7 +968,6 @@ do
 			Instance.new("UICorner", ActiveFill).CornerRadius = UDim.new(0,7)
 			table.insert(Library.ThemeObjects, ActiveFill)
 
-			-- Left accent bar (thin, only visible when active)
 			local AccentBar = Instance.new("Frame", TabButton)
 			AccentBar.Name = "AccentBar"
 			AccentBar.Position = UDim2.new(0,0,0.15,0)
@@ -982,7 +999,6 @@ do
 			Title.TextXAlignment = Enum.TextXAlignment.Left
 			Title.ZIndex = TabButton.ZIndex + 2
 
-			-- Hover effect
 			TabButton.MouseEnter:Connect(function()
 				if not Page.Open then
 					TweenService:Create(HoverFill, TweenInfo.new(0.15), {BackgroundTransparency = 0.93}):Play()
@@ -1079,7 +1095,9 @@ do
 			return setmetatable(Page, Library.Pages)
 		end
 
-		-- // Section with Obsidian-style icon support + badge + custom color
+		-- // Section with auto-sizing support
+		-- Pass Size = "auto" (or omit Size entirely) to get automatic height based on content.
+		-- Pass Size = <number> to get a fixed pixel height as before.
 		function Pages:Section(Properties)
 			Properties = Properties or {}
 
@@ -1087,12 +1105,15 @@ do
 				Name = Properties.Name or "Section",
 				Page = self,
 				Side = (Properties.Side or Properties.side or "left"):lower(),
-				Size = Properties.Size or Properties.size or 200,
-				Icon = Properties.Icon or Properties.icon or nil,   -- rbxassetid or url
-				Badge = Properties.Badge or Properties.badge or nil, -- short text badge e.g. "NEW"
-				Color = Properties.Color or Properties.color or nil, -- accent color override for header
+				-- "auto" or a number; default to auto now
+				Size = Properties.Size or Properties.size or "auto",
+				Icon = Properties.Icon or Properties.icon or nil,
+				Badge = Properties.Badge or Properties.badge or nil,
+				Color = Properties.Color or Properties.color or nil,
 				Elements = {},
 			}
+
+			local isAuto = (Section.Size == "auto")
 
 			local Parent =
 				Section.Side == "left"
@@ -1101,17 +1122,25 @@ do
 
 			-- Outer frame
 			local Frame = Instance.new("Frame", Parent)
-			Frame.Size = UDim2.new(1, 0, 0, Section.Size)
 			Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 			Frame.BorderSizePixel = 0
 			Frame.LayoutOrder = #Section.Page.Sections + 1
 			Frame.ZIndex = 55
+
+			if isAuto then
+				-- Let height be driven by content
+				Frame.Size = UDim2.new(1, 0, 0, 0)
+				Frame.AutomaticSize = Enum.AutomaticSize.Y
+			else
+				Frame.Size = UDim2.new(1, 0, 0, Section.Size)
+				Frame.AutomaticSize = Enum.AutomaticSize.None
+			end
+
 			Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
 			local FrameStroke = Instance.new("UIStroke", Frame)
 			FrameStroke.Color = Color3.fromRGB(30, 30, 30)
 			FrameStroke.Thickness = 1
 
-			-- Subtle inner gradient
 			local FrameGrad = Instance.new("UIGradient", Frame)
 			FrameGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(20,20,20)),
@@ -1130,7 +1159,6 @@ do
 
 			local headerTextOffset = 10
 
-			-- Optional section icon
 			if Section.Icon then
 				local SectionIcon = Instance.new("ImageLabel", HeaderRow)
 				SectionIcon.Name = "SectionIcon"
@@ -1145,7 +1173,6 @@ do
 				table.insert(Library.ThemeObjects, SectionIcon)
 			end
 
-			-- Section title
 			local HeaderTitle = Instance.new("TextLabel", HeaderRow)
 			HeaderTitle.Position = UDim2.new(0, headerTextOffset, 0, 0)
 			HeaderTitle.Size = UDim2.new(1, -(headerTextOffset + 10), 1, 0)
@@ -1157,7 +1184,6 @@ do
 			HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
 			HeaderTitle.ZIndex = 57
 
-			-- Optional badge
 			if Section.Badge then
 				local BadgeFrame = Instance.new("Frame", HeaderRow)
 				BadgeFrame.Name = "Badge"
@@ -1192,17 +1218,29 @@ do
 			Divider.BorderSizePixel = 0
 			Divider.ZIndex = 56
 
-			-- Content area
+			-- Content area — auto-sizes vertically to fit children
 			local Content = Instance.new("Frame", Frame)
 			Content.Position = UDim2.new(0, 10, 0, 36)
-			Content.Size = UDim2.new(1, -20, 1, -44)
 			Content.BackgroundTransparency = 1
 			Content.BorderSizePixel = 0
 			Content.ZIndex = 56
 
+			if isAuto then
+				-- Width fills, height is automatic
+				Content.Size = UDim2.new(1, -20, 0, 0)
+				Content.AutomaticSize = Enum.AutomaticSize.Y
+			else
+				Content.Size = UDim2.new(1, -20, 1, -44)
+				Content.AutomaticSize = Enum.AutomaticSize.None
+			end
+
 			local Layout = Instance.new("UIListLayout", Content)
 			Layout.Padding = UDim.new(0, 8)
 			Layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+			-- Bottom padding so content doesn't hug the frame edge
+			local BottomPad = Instance.new("UIPadding", Content)
+			BottomPad.PaddingBottom = UDim.new(0, 8)
 
 			Section.Elements.SectionContent = Content
 			Section.Page.Sections[#Section.Page.Sections + 1] = Section
@@ -1738,7 +1776,6 @@ do
 					TextButton.AutoButtonColor = false
 					Dropdown.OptionInsts[option].button = TextButton
 
-					-- hover effect
 					TextButton.MouseEnter:Connect(function()
 						TweenService:Create(TextButton, TweenInfo.new(0.1), {BackgroundTransparency = 0.92}):Play()
 						TextButton.BackgroundColor3 = Color3.fromRGB(255,255,255)
@@ -2142,7 +2179,6 @@ do
 			DropdownTitle.Parent = ToggleFrame
 			DropdownTitle.TextTruncate = Enum.TextTruncate.SplitWord
 
-			-- Focus glow
 			DropdownTitle.Focused:Connect(function()
 				TweenService:Create(TBStroke, TweenInfo.new(0.2), {Color = Library.Accent}):Play()
 			end)
@@ -2197,7 +2233,6 @@ do
 			local BtnStroke = Instance.new("UIStroke", ToggleFrame)
 			BtnStroke.Color = Color3.fromRGB(38,38,38)
 
-			-- Shimmer overlay
 			local BtnShimmer = Instance.new("Frame", ToggleFrame)
 			BtnShimmer.Size = UDim2.new(1,0,1,0)
 			BtnShimmer.BackgroundColor3 = Color3.fromRGB(255,255,255)
