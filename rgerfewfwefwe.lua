@@ -648,7 +648,7 @@ do
 			Inline.Name = "Inline"
 			Inline.Position = UDim2.new(0,1,0,1)
 			Inline.Size = UDim2.new(1,-2,1,-2)
-			Inline.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+			Inline.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Inline.BorderSizePixel = 0
 			Inline.ZIndex = 51
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 10)
