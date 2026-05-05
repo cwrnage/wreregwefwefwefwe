@@ -1269,7 +1269,7 @@ do
 			CircleGlow.Thickness = 1
 
 			NewToggle.Name = "NewToggle"
-			NewToggle.Size = UDim2.new(1,0,0,18)
+			NewToggle.Size = UDim2.new(1,0,0,15)
 			NewToggle.BackgroundTransparency = 1
 			NewToggle.BorderSizePixel = 0
 			NewToggle.Text = ""
@@ -1285,8 +1285,8 @@ do
 			ToggleTitle.TextSize = Library.FontSize
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 
-			ToggleFrame.Position = UDim2.new(1,-38,0.5,-9)
-			ToggleFrame.Size = UDim2.new(0,38,0,18)
+			ToggleFrame.Position = UDim2.new(1,-34,0.5,-7)
+            ToggleFrame.Size = UDim2.new(0,34,0,15)
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(28,28,28)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.ZIndex = 53
@@ -1303,8 +1303,8 @@ do
 			ToggleAccent.ZIndex = 53
 			table.insert(Library.ThemeObjects, ToggleAccent)
 
-			Circle.Position = UDim2.new(0,3,0.5,-6)
-			Circle.Size = UDim2.new(0,12,0,12)
+			Circle.Position = UDim2.new(0,2,0.5,-5)
+            Circle.Size = UDim2.new(0,10,0,10)
 			Circle.BackgroundColor3 = Color3.fromRGB(220,220,220)
 			Circle.BorderSizePixel = 0
 			Circle.ZIndex = 54
@@ -1313,7 +1313,7 @@ do
 				Toggle.Toggled = not Toggle.Toggled
 				if Toggle.Toggled then
 					TweenService:Create(ToggleAccent, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundTransparency = 0}):Play()
-					TweenService:Create(Circle, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(1,-15,0.5,-6)}):Play()
+					TweenService:Create(Circle, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Position = UDim2.new(1,-13,0.5,-5)}):Play()
 					TweenService:Create(Circle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play()
 					TweenService:Create(TFStroke, TweenInfo.new(0.2), {Color = Library.Accent}):Play()
 				else
