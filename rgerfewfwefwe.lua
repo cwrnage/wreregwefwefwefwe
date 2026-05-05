@@ -860,7 +860,7 @@ do
 			local SepLine = Instance.new("Frame", Inline)
 			SepLine.Size = UDim2.new(0,1,1,0)
 			SepLine.Position = UDim2.new(0,155,0,0)
-			SepLine.BackgroundColor3 = Color3.fromRGB(13,13,13)
+			SepLine.BackgroundColor3 = Color3.fromRGB(0,0,0)
 			SepLine.BorderSizePixel = 0
 			SepLine.ZIndex = 53
 
