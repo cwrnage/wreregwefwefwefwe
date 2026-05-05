@@ -673,7 +673,7 @@ do
 			SidebarClip.Name = "SidebarClip"
 			SidebarClip.Position = UDim2.new(1,-10,0,0)
 			SidebarClip.Size = UDim2.new(0,10,1,0)
-			SidebarClip.BackgroundColor3 = Color3.fromRGB(13,13,13)
+			SidebarClip.BackgroundColor3 = Color3.fromRGB(10,10,10)
 			SidebarClip.BorderSizePixel = 0
 			SidebarClip.ZIndex = 52
 
