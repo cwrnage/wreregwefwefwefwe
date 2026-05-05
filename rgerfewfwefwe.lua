@@ -635,7 +635,7 @@ do
 			Outline.AnchorPoint = Vector2.new(0.5,0.5)
 			Outline.ZIndex = 50
 			Outline.ClipsDescendants = false
-			Instance.new('UICorner', Outline).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Outline).CornerRadius = UDim.new(0, 0)
 			local OutlineStroke = Instance.new('UIStroke', Outline)
 			OutlineStroke.Color = Color3.fromRGB(45, 45, 45)
 			OutlineStroke.Thickness = 1
@@ -651,7 +651,7 @@ do
 			Inline.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Inline.BorderSizePixel = 0
 			Inline.ZIndex = 51
-			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 0)
 
 			-- // Sidebar (left tab panel)
 			-- Card: 68px tall, 8px margin top, 8px margin bottom = 84px reserved at bottom
