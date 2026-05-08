@@ -625,7 +625,6 @@ do
 			ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 			Library.ScreenGUI = ScreenGui
 
-			-- // Outer glow/border frame
 			local Outline = Instance.new('Frame', ScreenGui)
 			Outline.Name = "Outline"
 			Outline.Position = UDim2.new(0.5, -60, 0.5, 0)
@@ -643,7 +642,6 @@ do
 			Library.Holder = Outline
 			Library.OldSize = Window.Size
 
-			-- // Inner panel
 			local Inline = Instance.new('Frame', Outline)
 			Inline.Name = "Inline"
 			Inline.Position = UDim2.new(0,1,0,1)
@@ -653,11 +651,9 @@ do
 			Inline.ZIndex = 51
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 0)
 
-			-- // Sidebar (left tab panel)
-			-- Card: 68px tall, 8px margin top, 8px margin bottom = 84px reserved at bottom
 			local CARD_HEIGHT = 68
 			local CARD_MARGIN = 8
-			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2  -- 84px
+			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2
 
 			local Sidebar = Instance.new('Frame', Inline)
 			Sidebar.Name = "Sidebar"
@@ -668,7 +664,6 @@ do
 			Sidebar.ZIndex = 52
 			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 10)
 
-			-- // Clip the right corners of sidebar
 			local SidebarClip = Instance.new("Frame", Sidebar)
 			SidebarClip.Name = "SidebarClip"
 			SidebarClip.Position = UDim2.new(1,-10,0,0)
@@ -677,7 +672,6 @@ do
 			SidebarClip.BorderSizePixel = 0
 			SidebarClip.ZIndex = 52
 
-			-- // Subtle sidebar top gradient shimmer
 			local SidebarGrad = Instance.new("UIGradient", Sidebar)
 			SidebarGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(22,22,22)),
@@ -685,7 +679,6 @@ do
 			})
 			SidebarGrad.Rotation = 90
 
-			-- // Logo image at top of sidebar
 			local Logo = Instance.new("ImageLabel", Sidebar)
 			Logo.Name = "Logo"
 			Logo.Image = Properties.Icon or "http://www.roblox.com/asset/?id=17669613413"
@@ -697,7 +690,6 @@ do
 			Logo.Size = UDim2.fromOffset(54, 54)
 			Logo.ZIndex = 53
 
-			-- // Thin line under logo
 			local LogoDivider = Instance.new("Frame", Sidebar)
 			LogoDivider.Name = "LogoDivider"
 			LogoDivider.Position = UDim2.new(0, 12, 0, 70)
@@ -706,7 +698,6 @@ do
 			LogoDivider.BorderSizePixel = 0
 			LogoDivider.ZIndex = 53
 
-			-- // Tab holder — sits between logo divider and player card
 			local Tabs = Instance.new('Frame', Sidebar)
 			Tabs.Name = "Tabs"
 			Tabs.Position = UDim2.new(0, 8, 0, 80)
@@ -720,7 +711,6 @@ do
 			TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 			TabLayout.Padding = UDim.new(0, 3)
 
-			-- // Divider above player card
 			local CardDivider = Instance.new("Frame", Sidebar)
 			CardDivider.Name = "CardDivider"
 			CardDivider.Position = UDim2.new(0, 12, 1, -(CARD_TOTAL + 1))
@@ -729,11 +719,10 @@ do
 			CardDivider.BorderSizePixel = 0
 			CardDivider.ZIndex = 53
 
-			-- // Player card — pinned to the very bottom, same x-inset as tabs (8px each side)
 			local PlayerCard = Instance.new("Frame", Sidebar)
 			PlayerCard.Name = "PlayerCard"
 			PlayerCard.Position = UDim2.new(0, 4, 1, -(CARD_HEIGHT + CARD_MARGIN))
-            PlayerCard.Size = UDim2.new(1, -22, 0, CARD_HEIGHT)
+			PlayerCard.Size = UDim2.new(1, -22, 0, CARD_HEIGHT)
 			PlayerCard.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 			PlayerCard.BorderSizePixel = 0
 			PlayerCard.ZIndex = 53
@@ -742,7 +731,6 @@ do
 			PlayerCardStroke.Color = Color3.fromRGB(35, 35, 35)
 			PlayerCardStroke.Thickness = 1
 
-			-- Player avatar — vertically centered in card
 			local AvatarFrame = Instance.new("Frame", PlayerCard)
 			AvatarFrame.Name = "AvatarFrame"
 			AvatarFrame.Position = UDim2.new(0, 8, 0.5, 0)
@@ -765,7 +753,6 @@ do
 			AvatarImg.Image = ""
 			Instance.new("UICorner", AvatarImg).CornerRadius = UDim.new(1, 0)
 
-			-- Try to load avatar thumbnail
 			task.spawn(function()
 				local success, result = pcall(function()
 					return Players:GetUserThumbnailAsync(
@@ -779,11 +766,8 @@ do
 				end
 			end)
 
-			-- Text block to the right of avatar
-			-- Avatar: 8px left margin + 42px wide + 8px gap = starts at 58px
 			local textLeft = 58
 
-			-- Player display name
 			local DisplayNameLabel = Instance.new("TextLabel", PlayerCard)
 			DisplayNameLabel.Name = "DisplayName"
 			DisplayNameLabel.Position = UDim2.new(0, textLeft, 0, 10)
@@ -797,7 +781,6 @@ do
 			DisplayNameLabel.ZIndex = 54
 			DisplayNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-			-- Username (smaller, dimmer)
 			local UsernameLabel = Instance.new("TextLabel", PlayerCard)
 			UsernameLabel.Name = "Username"
 			UsernameLabel.Position = UDim2.new(0, textLeft, 0, 27)
@@ -811,7 +794,6 @@ do
 			UsernameLabel.ZIndex = 54
 			UsernameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-			-- Executor badge
 			local ExecutorBadge = Instance.new("Frame", PlayerCard)
 			ExecutorBadge.Name = "ExecutorBadge"
 			ExecutorBadge.Position = UDim2.new(0, textLeft, 0, 44)
@@ -838,7 +820,6 @@ do
 			ExecutorLabel.TextSize = 10
 			ExecutorLabel.ZIndex = 55
 
-			-- // Main content holder
 			local Holder = Instance.new('Frame', Inline)
 			Holder.Name = "Holder"
 			Holder.Position = UDim2.new(0,155,0,0)
@@ -848,7 +829,6 @@ do
 			Holder.ZIndex = 52
 			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 10)
 
-			-- // Subtle top gradient on content panel
 			local HolderGrad = Instance.new("UIGradient", Holder)
 			HolderGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(16,16,16)),
@@ -856,7 +836,6 @@ do
 			})
 			HolderGrad.Rotation = 90
 
-			-- // Subtle vertical separator line
 			local SepLine = Instance.new("Frame", Inline)
 			SepLine.Size = UDim2.new(0,1,1,0)
 			SepLine.Position = UDim2.new(0,155,0,0)
@@ -864,7 +843,6 @@ do
 			SepLine.BorderSizePixel = 0
 			SepLine.ZIndex = 53
 
-			-- // FadeThing for page transitions
 			local FadeThing = Instance.new("Frame", Holder)
 			FadeThing.Name = "FadeThing"
 			FadeThing.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
@@ -874,7 +852,6 @@ do
 			FadeThing.ZIndex = 55
 			FadeThing.Visible = false
 
-			-- // Elements
 			Window.Elements = {
 				TabHolder = Tabs,
 				Holder = Holder,
@@ -937,7 +914,6 @@ do
 				Elements = {},
 			}
 
-			-- // Tab button
 			local TabButton = Instance.new("TextButton", Page.Window.Elements.TabHolder)
 			TabButton.Size = UDim2.new(1, 0, 0, 32)
 			TabButton.BackgroundColor3 = Color3.fromRGB(255,40,40)
@@ -1006,7 +982,6 @@ do
 				TweenService:Create(HoverFill, TweenInfo.new(0.15), {BackgroundTransparency = 1}):Play()
 			end)
 
-			-- // Page content frame
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
 			NewPage.Position = UDim2.new(0, 8, 0, 8)
 			NewPage.Size = UDim2.new(1, -16, 1, -16)
@@ -1115,7 +1090,6 @@ do
 				and Section.Page.Elements.Left
 				or Section.Page.Elements.Right
 
-			-- Outer frame
 			local Frame = Instance.new("Frame", Parent)
 			Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 			Frame.BorderSizePixel = 0
@@ -1142,7 +1116,6 @@ do
 			})
 			FrameGrad.Rotation = 90
 
-			-- Header row
 			local HeaderRow = Instance.new("Frame", Frame)
 			HeaderRow.Name = "HeaderRow"
 			HeaderRow.Position = UDim2.new(0, 0, 0, 0)
@@ -1204,7 +1177,6 @@ do
 				table.insert(Library.ThemeObjects, BadgeFrame)
 			end
 
-			-- Divider under header
 			local Divider = Instance.new("Frame", Frame)
 			Divider.Position = UDim2.new(0, 8, 0, 28)
 			Divider.Size = UDim2.new(1, -16, 0, 1)
@@ -1212,7 +1184,6 @@ do
 			Divider.BorderSizePixel = 0
 			Divider.ZIndex = 56
 
-			-- Content area
 			local Content = Instance.new("Frame", Frame)
 			Content.Position = UDim2.new(0, 10, 0, 36)
 			Content.BackgroundTransparency = 1
@@ -1286,7 +1257,7 @@ do
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 
 			ToggleFrame.Position = UDim2.new(1,-34,0.5,-7)
-            ToggleFrame.Size = UDim2.new(0,34,0,15)
+			ToggleFrame.Size = UDim2.new(0,34,0,15)
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(28,28,28)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.ZIndex = 53
@@ -1304,7 +1275,7 @@ do
 			table.insert(Library.ThemeObjects, ToggleAccent)
 
 			Circle.Position = UDim2.new(0,2,0.5,-5)
-            Circle.Size = UDim2.new(0,10,0,10)
+			Circle.Size = UDim2.new(0,10,0,10)
 			Circle.BackgroundColor3 = Color3.fromRGB(220,220,220)
 			Circle.BorderSizePixel = 0
 			Circle.ZIndex = 54
@@ -1437,6 +1408,78 @@ do
 
 			Section.Elements = { SectionContent = ScrollContent }
 			return setmetatable(Section, Library.Sections)
+		end
+
+		-- // DependencyBox
+		-- Shows or hides a group of elements based on toggle states.
+		-- Usage:
+		--   local dep = MySection:DependencyBox()
+		--   dep:Slider({...})
+		--   dep:SetupDependencies({{myToggle, true}, {otherToggle, true}})
+		function Sections:DependencyBox(Properties)
+			Properties = Properties or {}
+			local DepBox = {
+				Section = self,
+				Dependencies = {},
+				Elements = {},
+			}
+
+			-- Invisible wrapper frame that holds the dependent elements
+			local Container = Instance.new("Frame")
+			Container.Name = "DependencyBox"
+			Container.BackgroundTransparency = 1
+			Container.BorderSizePixel = 0
+			Container.Size = UDim2.new(1, 0, 0, 0)
+			Container.AutomaticSize = Enum.AutomaticSize.Y
+			Container.ClipsDescendants = false
+			Container.ZIndex = 56
+			Container.Visible = false -- hidden by default until deps are set
+			Container.Parent = self.Elements.SectionContent
+
+			local Layout = Instance.new("UIListLayout", Container)
+			Layout.Padding = UDim.new(0, 8)
+			Layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+			-- Expose SectionContent so all Sections element methods work inside
+			DepBox.Elements.SectionContent = Container
+
+			-- Evaluate all dependencies and show/hide accordingly
+			local function UpdateVisibility()
+				for _, dep in ipairs(DepBox.Dependencies) do
+					local toggle = dep[1]
+					local expected = dep[2]
+					-- Support both Toggle objects (have .Toggled) and plain booleans via Flags
+					local current = (type(toggle) == "table" and toggle.Toggled ~= nil)
+						and toggle.Toggled
+						or Library.Flags[toggle.Flag]
+					if current ~= expected then
+						Container.Visible = false
+						return
+					end
+				end
+				Container.Visible = true
+			end
+
+			-- Call this after adding elements to wire up the dependencies
+			function DepBox:SetupDependencies(deps)
+				DepBox.Dependencies = deps
+
+				for _, dep in ipairs(deps) do
+					local toggle = dep[1]
+					-- Wrap the toggle's callback to also update visibility
+					local origCallback = toggle.Callback
+					toggle.Callback = function(state)
+						origCallback(state)
+						UpdateVisibility()
+					end
+				end
+
+				-- Run immediately to set correct initial state
+				UpdateVisibility()
+			end
+
+			-- Allow DepBox to be used exactly like a Section for adding elements
+			return setmetatable(DepBox, Library.Sections)
 		end
 
 		-- // Slider
