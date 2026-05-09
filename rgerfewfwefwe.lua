@@ -1411,11 +1411,6 @@ do
 		end
 
 		-- // DependencyBox
-		-- Shows or hides a group of elements based on toggle states.
-		-- Usage:
-		--   local dep = MySection:DependencyBox()
-		--   dep:Slider({...})
-		--   dep:SetupDependencies({{myToggle, true}, {otherToggle, true}})
 		function Sections:DependencyBox(Properties)
 			Properties = Properties or {}
 			local DepBox = {
@@ -1424,7 +1419,6 @@ do
 				Elements = {},
 			}
 
-			-- Invisible wrapper frame that holds the dependent elements
 			local Container = Instance.new("Frame")
 			Container.Name = "DependencyBox"
 			Container.BackgroundTransparency = 1
@@ -1433,22 +1427,19 @@ do
 			Container.AutomaticSize = Enum.AutomaticSize.Y
 			Container.ClipsDescendants = false
 			Container.ZIndex = 56
-			Container.Visible = false -- hidden by default until deps are set
+			Container.Visible = false
 			Container.Parent = self.Elements.SectionContent
 
 			local Layout = Instance.new("UIListLayout", Container)
 			Layout.Padding = UDim.new(0, 8)
 			Layout.SortOrder = Enum.SortOrder.LayoutOrder
 
-			-- Expose SectionContent so all Sections element methods work inside
 			DepBox.Elements.SectionContent = Container
 
-			-- Evaluate all dependencies and show/hide accordingly
 			local function UpdateVisibility()
 				for _, dep in ipairs(DepBox.Dependencies) do
 					local toggle = dep[1]
 					local expected = dep[2]
-					-- Support both Toggle objects (have .Toggled) and plain booleans via Flags
 					local current = (type(toggle) == "table" and toggle.Toggled ~= nil)
 						and toggle.Toggled
 						or Library.Flags[toggle.Flag]
@@ -1460,25 +1451,19 @@ do
 				Container.Visible = true
 			end
 
-			-- Call this after adding elements to wire up the dependencies
 			function DepBox:SetupDependencies(deps)
 				DepBox.Dependencies = deps
-
 				for _, dep in ipairs(deps) do
 					local toggle = dep[1]
-					-- Wrap the toggle's callback to also update visibility
 					local origCallback = toggle.Callback
 					toggle.Callback = function(state)
 						origCallback(state)
 						UpdateVisibility()
 					end
 				end
-
-				-- Run immediately to set correct initial state
 				UpdateVisibility()
 			end
 
-			-- Allow DepBox to be used exactly like a Section for adding elements
 			return setmetatable(DepBox, Library.Sections)
 		end
 
@@ -1623,6 +1608,10 @@ do
 		end
 
 		-- // List / Dropdown
+		-- FIX: ToggleContent is reparented to ScreenGUI on open so it renders above
+		-- everything regardless of ClipsDescendants on ancestor ScrollingFrames.
+		-- Position is set via AbsolutePosition of the toggle button, same pattern
+		-- the colorpicker already uses.
 		function Sections:List(Properties)
 			local Properties = Properties or {};
 			local Dropdown = {
@@ -1643,7 +1632,10 @@ do
 			local DropdownTitle = Instance.new('TextLabel', NewDropdown)
 			local ToggleFrame = Instance.new('TextButton', NewDropdown)
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(0,6)
-			local ToggleContent = Instance.new('ScrollingFrame', ToggleFrame)
+
+			-- ToggleContent is created without a parent initially; it gets
+			-- reparented to ScreenGUI when open and back to ToggleFrame when closed.
+			local ToggleContent = Instance.new('ScrollingFrame')
 			Instance.new('UICorner', ToggleContent).CornerRadius = UDim.new(0,6)
 			local UIListLayout = Instance.new('UIListLayout', ToggleContent)
 
@@ -1678,17 +1670,19 @@ do
 			local TFStroke2 = Instance.new("UIStroke", ToggleFrame)
 			TFStroke2.Color = Color3.fromRGB(38,38,38)
 
-			ToggleContent.Position = UDim2.new(0,0,1,2)
-			ToggleContent.Size = UDim2.new(1,0,0,0)
+			-- ToggleContent visual properties (position/size set dynamically on open)
 			ToggleContent.BackgroundColor3 = Color3.fromRGB(16,16,16)
 			ToggleContent.BorderSizePixel = 0
-			ToggleContent.ZIndex = 54
+			ToggleContent.ZIndex = 100
 			ToggleContent.ClipsDescendants = true
 			ToggleContent.ScrollBarImageTransparency = 0.5
 			ToggleContent.ScrollBarThickness = 3
 			ToggleContent.ScrollingDirection = Enum.ScrollingDirection.Y
 			ToggleContent.AutomaticCanvasSize = Enum.AutomaticSize.None
 			ToggleContent.CanvasSize = UDim2.new(0,0,0,0)
+			ToggleContent.Size = UDim2.fromOffset(0, 0)
+			ToggleContent.Visible = false
+			ToggleContent.Parent = Library.ScreenGUI  -- parented to ScreenGUI from the start, like the colorpicker
 			local TCStroke = Instance.new("UIStroke", ToggleContent)
 			TCStroke.Color = Color3.fromRGB(35,35,35)
 
@@ -1716,18 +1710,27 @@ do
 			local Toggled = false
 			local Count = 0
 
+			-- Helper: position ToggleContent directly below ToggleFrame in screen space
+			local function PositionContent()
+				local absPos = ToggleFrame.AbsolutePosition
+				local absSize = ToggleFrame.AbsoluteSize
+				ToggleContent.Position = UDim2.fromOffset(absPos.X, absPos.Y + absSize.Y + 2)
+				ToggleContent.Size = UDim2.fromOffset(absSize.X, math.min(Count * 22, 150))
+			end
+
 			Library:Connection(ToggleFrame.MouseButton1Click, function()
 				Toggled = not Toggled
 				Library.DropdownOpen = Toggled
 				if Toggled then
 					NewDropdown.ZIndex = 55
+					PositionContent()
+					ToggleContent.Visible = true
 					TweenService:Create(Icon, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Rotation = 180}):Play()
 					TweenService:Create(Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(200,200,200)}):Play()
-					TweenService:Create(ToggleContent, TweenInfo.new(0.22, Enum.EasingStyle.Quad), {Size = UDim2.new(1,0,0,math.min(Count * 22, 150))}):Play()
 				else
 					TweenService:Create(Icon, TweenInfo.new(0.2), {Rotation = 0}):Play()
 					TweenService:Create(Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(90,90,90)}):Play()
-					TweenService:Create(ToggleContent, TweenInfo.new(0.22, Enum.EasingStyle.Quad), {Size = UDim2.new(1,0,0,0)}):Play()
+					ToggleContent.Visible = false
 					task.wait(0.22)
 					NewDropdown.ZIndex = 54
 				end
@@ -1740,7 +1743,7 @@ do
 						Library.DropdownOpen = false
 						TweenService:Create(Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(90,90,90)}):Play()
 						TweenService:Create(Icon, TweenInfo.new(0.2), {Rotation = 0}):Play()
-						TweenService:Create(ToggleContent, TweenInfo.new(0.22, Enum.EasingStyle.Quad), {Size = UDim2.new(1,0,0,0)}):Play()
+						ToggleContent.Visible = false
 						task.wait(0.22)
 						NewDropdown.ZIndex = 54
 					end
@@ -1809,6 +1812,7 @@ do
 					TextButton.BorderSizePixel = 0
 					TextButton.Text = ""
 					TextButton.AutoButtonColor = false
+					TextButton.ZIndex = 101
 					Dropdown.OptionInsts[option].button = TextButton
 
 					TextButton.MouseEnter:Connect(function()
@@ -1827,6 +1831,7 @@ do
 					DropdownTitle3.Font = Enum.Font.Gotham
 					DropdownTitle3.TextSize = Library.FontSize
 					DropdownTitle3.TextXAlignment = Enum.TextXAlignment.Left
+					DropdownTitle3.ZIndex = 101
 					Dropdown.OptionInsts[option].text = DropdownTitle3
 
 					AccentDot.Position = UDim2.new(0,8,0,8)
@@ -1834,6 +1839,7 @@ do
 					AccentDot.BackgroundColor3 = Library.Accent
 					AccentDot.BackgroundTransparency = 1
 					AccentDot.BorderSizePixel = 0
+					AccentDot.ZIndex = 101
 					table.insert(Library.ThemeObjects, AccentDot)
 					Dropdown.OptionInsts[option].dot = AccentDot
 					Count += 1
