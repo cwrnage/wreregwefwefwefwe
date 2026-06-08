@@ -1607,11 +1607,6 @@ do
 			return Slider
 		end
 
-		-- // List / Dropdown
-		-- FIX: ToggleContent is reparented to ScreenGUI on open so it renders above
-		-- everything regardless of ClipsDescendants on ancestor ScrollingFrames.
-		-- Position is set via AbsolutePosition of the toggle button, same pattern
-		-- the colorpicker already uses.
 		function Sections:List(Properties)
 			local Properties = Properties or {};
 			local Dropdown = {
@@ -1633,8 +1628,6 @@ do
 			local ToggleFrame = Instance.new('TextButton', NewDropdown)
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(0,6)
 
-			-- ToggleContent is created without a parent initially; it gets
-			-- reparented to ScreenGUI when open and back to ToggleFrame when closed.
 			local ToggleContent = Instance.new('ScrollingFrame')
 			Instance.new('UICorner', ToggleContent).CornerRadius = UDim.new(0,6)
 			local UIListLayout = Instance.new('UIListLayout', ToggleContent)
@@ -1670,7 +1663,6 @@ do
 			local TFStroke2 = Instance.new("UIStroke", ToggleFrame)
 			TFStroke2.Color = Color3.fromRGB(38,38,38)
 
-			-- ToggleContent visual properties (position/size set dynamically on open)
 			ToggleContent.BackgroundColor3 = Color3.fromRGB(16,16,16)
 			ToggleContent.BorderSizePixel = 0
 			ToggleContent.ZIndex = 100
@@ -1682,7 +1674,7 @@ do
 			ToggleContent.CanvasSize = UDim2.new(0,0,0,0)
 			ToggleContent.Size = UDim2.fromOffset(0, 0)
 			ToggleContent.Visible = false
-			ToggleContent.Parent = Library.ScreenGUI  -- parented to ScreenGUI from the start, like the colorpicker
+			ToggleContent.Parent = Library.ScreenGUI
 			local TCStroke = Instance.new("UIStroke", ToggleContent)
 			TCStroke.Color = Color3.fromRGB(35,35,35)
 
@@ -1710,7 +1702,6 @@ do
 			local Toggled = false
 			local Count = 0
 
-			-- Helper: position ToggleContent directly below ToggleFrame in screen space
 			local function PositionContent()
 				local absPos = ToggleFrame.AbsolutePosition
 				local absSize = ToggleFrame.AbsoluteSize
@@ -2014,6 +2005,21 @@ do
 			local Key
 			local State = false
 
+			-- // FIX: resolveKey returns the actual button identifier for any input.
+			-- For gamepad inputs, UserInputType is always the gamepad device (e.g. Gamepad1)
+			-- and the actual button pressed (ButtonA, ButtonX, etc.) lives in KeyCode.
+			-- For all other inputs (mouse buttons, etc.) UserInputType IS the identifier.
+			local function resolveKey(inp)
+				local t = inp.UserInputType
+				if t == Enum.UserInputType.Gamepad1
+				or t == Enum.UserInputType.Gamepad2
+				or t == Enum.UserInputType.Gamepad3
+				or t == Enum.UserInputType.Gamepad4 then
+					return inp.KeyCode
+				end
+				return t
+			end
+
 			local NewKey = Instance.new("TextButton")
 			NewKey.Text = ""
 			NewKey.AutoButtonColor = false
@@ -2104,7 +2110,9 @@ do
 						function(input, gpe)
 							if gpe then return end
 							if input.UserInputType == Enum.UserInputType.Touch then return end
-							set(input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or input.UserInputType)
+							-- FIX: use resolveKey so gamepad buttons store their KeyCode,
+							-- not the generic Gamepad1 UserInputType
+							set(input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or resolveKey(input))
 							Library:Disconnect(Keybind.Binding)
 							task.wait()
 							Keybind.Binding = nil
@@ -2116,7 +2124,9 @@ do
 
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(inp, gpe)
 				if gpe then return end
-				if (inp.KeyCode == Key or inp.UserInputType == Key) and not Keybind.Binding and not Keybind.UseKey then
+				-- FIX: compare against resolveKey(inp) so each gamepad button only
+				-- triggers the keybind it was actually bound to
+				if (inp.KeyCode == Key or resolveKey(inp) == Key) and not Keybind.Binding and not Keybind.UseKey then
 					if Keybind.Mode == "Hold" then
 						if Keybind.Flag then Library.Flags[Keybind.Flag] = true end
 						c = Library:Connection(game:GetService("RunService").RenderStepped, function()
@@ -2134,7 +2144,8 @@ do
 				if gpe then return end
 				if Keybind.Mode == "Hold" and not Keybind.UseKey then
 					if Key ~= "" or Key ~= nil then
-						if inp.KeyCode == Key or inp.UserInputType == Key then
+						-- FIX: same resolveKey fix so Hold mode releases correctly per-button
+						if inp.KeyCode == Key or resolveKey(inp) == Key then
 							if c then
 								c:Disconnect()
 								if Keybind.Flag then Library.Flags[Keybind.Flag] = false end
