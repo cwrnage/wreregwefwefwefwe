@@ -779,13 +779,37 @@ do
 				local resolved = ResolveImageSource(imgSrc or "")
 				local trans = transparency or 0.35
 
+				if resolved == "" then
+					warn("[UI Background] Could not resolve image source: " .. tostring(imgSrc))
+					return
+				end
+
+				print("[UI Background] Applying image: " .. resolved)
+
 				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
-					-- Update existing
 					Library.BackgroundImageLabel.Image = resolved
 					Library.BackgroundImageLabel.ImageTransparency = trans
 				else
-					-- Create fresh
-					local BgImage = Instance.new("ImageLabel", Inline)
+					-- Parent to Outline (ZIndex 50) so it sits behind Inline.
+					-- Make Inline transparent so the image shows through.
+					Inline.BackgroundTransparency = 1
+
+					-- Also make the Holder (right content area) and Sidebar transparent
+					-- so the background image bleeds through the whole UI.
+					-- We do this by finding them after they're created via a deferred check.
+					task.defer(function()
+						for _, child in ipairs(Inline:GetChildren()) do
+							if child:IsA("Frame") and (child.Name == "Holder" or child.Name == "Sidebar") then
+								child.BackgroundTransparency = 1
+								-- Also kill their UIGradients temporarily
+								for _, gc in ipairs(child:GetChildren()) do
+									if gc:IsA("UIGradient") then gc.Enabled = false end
+								end
+							end
+						end
+					end)
+
+					local BgImage = Instance.new("ImageLabel", Outline)
 					BgImage.Name = "BackgroundImage"
 					BgImage.Image = resolved
 					BgImage.ScaleType = Enum.ScaleType.Crop
@@ -793,16 +817,18 @@ do
 					BgImage.Position = UDim2.new(0, 0, 0, 0)
 					BgImage.BackgroundTransparency = 1
 					BgImage.ImageTransparency = trans
-					BgImage.ZIndex = 50
+					BgImage.ZIndex = 1  -- behind everything (Outline is 50, children start above)
 					BgImage.BorderSizePixel = 0
-					-- Subtle dark overlay so elements remain readable
+
+					-- Dark overlay keeps text/elements readable over any image
 					local BgOverlay = Instance.new("Frame", BgImage)
 					BgOverlay.Name = "BgOverlay"
 					BgOverlay.Size = UDim2.new(1, 0, 1, 0)
 					BgOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 					BgOverlay.BackgroundTransparency = 0.45
 					BgOverlay.BorderSizePixel = 0
-					BgOverlay.ZIndex = 50
+					BgOverlay.ZIndex = 1
+
 					Library.BackgroundImageLabel = BgImage
 				end
 			end
