@@ -685,35 +685,95 @@ do
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 0)
 
 			-- =============================================
-			-- NEW: CUSTOM BACKGROUND IMAGE
+			-- CUSTOM BACKGROUND IMAGE
+			-- Accepts: rbxassetid://, rbxthumb://, or any
+			-- full HTTP/HTTPS URL (uses getcustomasset if
+			-- the executor supports it, otherwise warns).
+			--
+			-- Usage at creation:
+			--   Library:New({
+			--     BackgroundImage = "https://i.imgur.com/abc.png",
+			--     BackgroundTransparency = 0.3,  -- 0 = opaque, 1 = invisible (default 0.35)
+			--   })
+			--
+			-- Or set / change at runtime via the window:
+			--   window:SetBackground("rbxassetid://12345678", 0.3)
+			--   window:SetBackground("https://i.imgur.com/xyz.jpg")
 			-- =============================================
-			-- Usage: Library:New({ BackgroundImage = "rbxassetid://YOUR_IMAGE_ID", BackgroundTransparency = 0.3 })
-			-- The image sits behind everything in the content area.
-			-- An overlay keeps text/elements readable regardless of image brightness.
-			if Properties.BackgroundImage then
-				local BgImage = Instance.new("ImageLabel", Inline)
-				BgImage.Name = "BackgroundImage"
-				BgImage.Image = Properties.BackgroundImage
-				BgImage.ScaleType = Enum.ScaleType.Crop
-				BgImage.Size = UDim2.new(1, 0, 1, 0)
-				BgImage.Position = UDim2.new(0, 0, 0, 0)
-				BgImage.BackgroundTransparency = 1
-				BgImage.ImageTransparency = Properties.BackgroundTransparency or 0.35
-				BgImage.ZIndex = 50 -- behind everything (Inline is 51+)
-				BgImage.BorderSizePixel = 0
-				-- Dark overlay to keep elements readable
-				local BgOverlay = Instance.new("Frame", BgImage)
-				BgOverlay.Size = UDim2.new(1, 0, 1, 0)
-				BgOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-				BgOverlay.BackgroundTransparency = 0.45
-				BgOverlay.BorderSizePixel = 0
-				BgOverlay.ZIndex = 50
 
-				-- Expose so you can change it at runtime:
-				-- Library.BackgroundImageLabel.Image = "rbxassetid://NEW_ID"
-				-- Library.BackgroundImageLabel.ImageTransparency = 0.5
-				Library.BackgroundImageLabel = BgImage
+			-- Helper that resolves any image source into a string
+			-- that ImageLabel.Image can use.
+			local function ResolveImageSource(src)
+				if type(src) ~= "string" or src == "" then return "" end
+				-- Already a Roblox asset / thumb URL → use as-is
+				if src:sub(1, 13) == "rbxassetid://"
+				or src:sub(1, 11) == "rbxthumb://"
+				or src:sub(1, 12) == "rbxgameasset"
+				or src:sub(1, 7)  == "rbxhttp" then
+					return src
+				end
+				-- HTTP/HTTPS URL → needs getcustomasset
+				if src:sub(1, 4) == "http" then
+					if getcustomasset then
+						local ok, result = pcall(getcustomasset, src)
+						if ok and result then
+							return result
+						else
+							warn("[UI Background] getcustomasset failed for: " .. src .. "\nReason: " .. tostring(result))
+							return ""
+						end
+					else
+						warn("[UI Background] Your executor does not support getcustomasset. " ..
+							"External image URLs cannot be loaded. " ..
+							"Use an rbxassetid:// instead, or switch to an executor that supports getcustomasset (e.g. Synapse X, KRNL, Delta).")
+						return ""
+					end
+				end
+				-- Fallback: pass through and let Roblox handle it
+				return src
 			end
+
+			-- Internal helper that builds or updates the background ImageLabel
+			local function ApplyBackground(imgSrc, transparency)
+				local resolved = ResolveImageSource(imgSrc or "")
+				local trans = transparency or 0.35
+
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					-- Update existing
+					Library.BackgroundImageLabel.Image = resolved
+					Library.BackgroundImageLabel.ImageTransparency = trans
+				else
+					-- Create fresh
+					local BgImage = Instance.new("ImageLabel", Inline)
+					BgImage.Name = "BackgroundImage"
+					BgImage.Image = resolved
+					BgImage.ScaleType = Enum.ScaleType.Crop
+					BgImage.Size = UDim2.new(1, 0, 1, 0)
+					BgImage.Position = UDim2.new(0, 0, 0, 0)
+					BgImage.BackgroundTransparency = 1
+					BgImage.ImageTransparency = trans
+					BgImage.ZIndex = 50
+					BgImage.BorderSizePixel = 0
+					-- Subtle dark overlay so elements remain readable
+					local BgOverlay = Instance.new("Frame", BgImage)
+					BgOverlay.Name = "BgOverlay"
+					BgOverlay.Size = UDim2.new(1, 0, 1, 0)
+					BgOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					BgOverlay.BackgroundTransparency = 0.45
+					BgOverlay.BorderSizePixel = 0
+					BgOverlay.ZIndex = 50
+					Library.BackgroundImageLabel = BgImage
+				end
+			end
+
+			-- Apply at creation time if a source was passed
+			if Properties.BackgroundImage then
+				task.spawn(function()
+					ApplyBackground(Properties.BackgroundImage, Properties.BackgroundTransparency)
+				end)
+			end
+
+			Library._ApplyBackground = ApplyBackground
 
 			local CARD_HEIGHT = 68
 			local CARD_MARGIN = 8
@@ -856,153 +916,193 @@ do
 				end
 			end
 
-			-- Helper: create a search result row that mirrors the actual UI element style
-			-- elementData = { Type, Name, Ref (the actual element table), PageName, SectionName }
-			local function CreateSearchRow(elementData)
-				local row = Instance.new("Frame", SearchScroll)
-				row.Size = UDim2.new(1, 0, 0, 30)
-				row.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-				row.BackgroundTransparency = 0.5
-				row.BorderSizePixel = 0
-				row.ZIndex = 202
-				Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+			-- =============================================
+			-- NAVIGATE TO ELEMENT: switches to the right page,
+			-- then scrolls the section column until the element
+			-- frame is visible, then flashes it so the user
+			-- immediately sees where to look.
+			-- =============================================
+			local function NavigateToElement(elementData)
+				-- 1. Close the search dropdown
+				SearchResults.Visible = false
+				SearchBox.Text = ""
 
-				-- Type badge (colored by element type)
+				-- 2. Switch to the page that owns this element
+				local targetPage = elementData.PageRef
+				if targetPage and not targetPage.Open then
+					-- Turn off all other pages
+					for _, p in pairs(Window.Pages) do
+						if p.Open then p:Turn(false) end
+					end
+					targetPage:Turn(true)
+				end
+
+				-- 3. Wait a frame so layout settles
+				task.wait(0.05)
+
+				-- 4. Find the element's GuiObject and scroll to it, then flash
+				local guiObj = elementData.GuiObject
+				if guiObj then
+					-- Find which ScrollingFrame column owns it
+					local function findScrollParent(obj)
+						local cur = obj.Parent
+						while cur do
+							if cur:IsA("ScrollingFrame") and
+								(cur.Name == "Left" or cur.Name == "Right") then
+								return cur
+							end
+							cur = cur.Parent
+						end
+						return nil
+					end
+					local col = findScrollParent(guiObj)
+					if col then
+						-- Scroll so the element sits ~1/4 from the top
+						local objRelY = guiObj.AbsolutePosition.Y - col.AbsolutePosition.Y + col.CanvasPosition.Y
+						local targetY = math.max(0, objRelY - col.AbsoluteSize.Y * 0.25)
+						TweenService:Create(col, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{CanvasPosition = Vector2.new(0, targetY)}):Play()
+					end
+
+					-- Flash highlight — a bright accent frame that fades out
+					task.wait(0.1)
+					local Flash = Instance.new("Frame", guiObj)
+					Flash.Size = UDim2.new(1, 4, 1, 4)
+					Flash.Position = UDim2.new(0, -2, 0, -2)
+					Flash.BackgroundColor3 = Library.Accent
+					Flash.BackgroundTransparency = 0.55
+					Flash.BorderSizePixel = 0
+					Flash.ZIndex = guiObj.ZIndex + 10
+					Instance.new("UICorner", Flash).CornerRadius = UDim.new(0, 6)
+					-- Pulse: fade in then out
+					TweenService:Create(Flash, TweenInfo.new(0.18), {BackgroundTransparency = 0.3}):Play()
+					task.delay(0.22, function()
+						TweenService:Create(Flash, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+						task.delay(0.52, function() Flash:Destroy() end)
+					end)
+				end
+			end
+
+			-- Helper: create a search result row
+			-- elementData = { Type, Name, Ref, PageName, SectionName, PageRef, GuiObject }
+			local function CreateSearchRow(elementData)
 				local typeColors = {
-					Toggle = Color3.fromRGB(255, 40, 40),
-					Slider = Color3.fromRGB(40, 120, 255),
-					List = Color3.fromRGB(180, 60, 255),
-					Colorpicker = Color3.fromRGB(255, 180, 0),
-					Keybind = Color3.fromRGB(40, 200, 120),
-					Button = Color3.fromRGB(200, 200, 200),
-					Textbox = Color3.fromRGB(80, 200, 255),
+					Toggle     = Color3.fromRGB(255, 60, 60),
+					Slider     = Color3.fromRGB(60, 140, 255),
+					List       = Color3.fromRGB(180, 70, 255),
+					Colorpicker= Color3.fromRGB(255, 190, 30),
+					Keybind    = Color3.fromRGB(50, 210, 130),
+					Button     = Color3.fromRGB(200, 200, 200),
+					Textbox    = Color3.fromRGB(80, 210, 255),
 				}
 				local badgeColor = typeColors[elementData.Type] or Color3.fromRGB(100, 100, 100)
 
-				local TypeBadge = Instance.new("Frame", row)
-				TypeBadge.Size = UDim2.fromOffset(0, 14)
-				TypeBadge.AutomaticSize = Enum.AutomaticSize.X
-				TypeBadge.Position = UDim2.new(1, -6, 0.5, 0)
-				TypeBadge.AnchorPoint = Vector2.new(1, 0.5)
-				TypeBadge.BackgroundColor3 = badgeColor
-				TypeBadge.BackgroundTransparency = 0.6
-				TypeBadge.BorderSizePixel = 0
-				TypeBadge.ZIndex = 203
-				Instance.new("UICorner", TypeBadge).CornerRadius = UDim.new(0, 3)
-				local BadgePad2 = Instance.new("UIPadding", TypeBadge)
-				BadgePad2.PaddingLeft = UDim.new(0, 3)
-				BadgePad2.PaddingRight = UDim.new(0, 3)
-				local TypeLabel = Instance.new("TextLabel", TypeBadge)
-				TypeLabel.Size = UDim2.new(0, 0, 1, 0)
-				TypeLabel.AutomaticSize = Enum.AutomaticSize.X
-				TypeLabel.BackgroundTransparency = 1
-				TypeLabel.Text = elementData.Type
-				TypeLabel.Font = Enum.Font.GothamBold
-				TypeLabel.TextSize = 8
-				TypeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-				TypeLabel.ZIndex = 204
+				-- Row button (entire row is clickable)
+				local Row = Instance.new("TextButton", SearchScroll)
+				Row.Size = UDim2.new(1, 0, 0, 38)
+				Row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+				Row.BackgroundTransparency = 0
+				Row.BorderSizePixel = 0
+				Row.Text = ""
+				Row.AutoButtonColor = false
+				Row.ZIndex = 202
+				Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 7)
+				local RowStroke = Instance.new("UIStroke", Row)
+				RowStroke.Color = Color3.fromRGB(35, 35, 35)
+				RowStroke.Thickness = 1
+
+				-- Left accent bar (type color)
+				local AccentBar = Instance.new("Frame", Row)
+				AccentBar.Size = UDim2.new(0, 3, 0.6, 0)
+				AccentBar.Position = UDim2.new(0, 0, 0.2, 0)
+				AccentBar.BackgroundColor3 = badgeColor
+				AccentBar.BorderSizePixel = 0
+				AccentBar.ZIndex = 203
+				Instance.new("UICorner", AccentBar).CornerRadius = UDim.new(1, 0)
 
 				-- Element name
-				local NameLabel = Instance.new("TextLabel", row)
-				NameLabel.Position = UDim2.new(0, 8, 0, 0)
-				NameLabel.Size = UDim2.new(1, -70, 0.55, 0)
+				local NameLabel = Instance.new("TextLabel", Row)
+				NameLabel.Position = UDim2.new(0, 12, 0, 4)
+				NameLabel.Size = UDim2.new(1, -80, 0, 16)
 				NameLabel.BackgroundTransparency = 1
 				NameLabel.Text = elementData.Name
-				NameLabel.Font = Enum.Font.Gotham
+				NameLabel.Font = Enum.Font.GothamBold
 				NameLabel.TextSize = 11
-				NameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+				NameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
 				NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 				NameLabel.ZIndex = 203
 				NameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-				-- Page > Section breadcrumb
-				local BreadLabel = Instance.new("TextLabel", row)
-				BreadLabel.Position = UDim2.new(0, 8, 0.55, 0)
-				BreadLabel.Size = UDim2.new(1, -70, 0.45, 0)
+				-- Breadcrumb  Page › Section
+				local BreadLabel = Instance.new("TextLabel", Row)
+				BreadLabel.Position = UDim2.new(0, 12, 0, 21)
+				BreadLabel.Size = UDim2.new(1, -80, 0, 13)
 				BreadLabel.BackgroundTransparency = 1
 				BreadLabel.Text = (elementData.PageName or "?") .. " › " .. (elementData.SectionName or "?")
 				BreadLabel.Font = Enum.Font.Gotham
 				BreadLabel.TextSize = 9
-				BreadLabel.TextColor3 = Color3.fromRGB(80, 80, 80)
+				BreadLabel.TextColor3 = Color3.fromRGB(75, 75, 75)
 				BreadLabel.TextXAlignment = Enum.TextXAlignment.Left
 				BreadLabel.ZIndex = 203
 				BreadLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-				-- Inline control: for Toggle show a mini toggle, for Slider show current value, etc.
-				local function AddInlineControl()
-					local ref = elementData.Ref
-					if elementData.Type == "Toggle" and ref then
-						local MiniToggleBg = Instance.new("Frame", row)
-						MiniToggleBg.Position = UDim2.new(0, 8, 0, 0)
-						MiniToggleBg.AnchorPoint = Vector2.new(0, 0)
-						MiniToggleBg.Size = UDim2.new(1, -16, 1, 0)
-						MiniToggleBg.BackgroundTransparency = 1
-						MiniToggleBg.ZIndex = 203
+				-- Type pill badge (top-right)
+				local TypeBadge = Instance.new("Frame", Row)
+				TypeBadge.Size = UDim2.fromOffset(0, 14)
+				TypeBadge.AutomaticSize = Enum.AutomaticSize.X
+				TypeBadge.Position = UDim2.new(1, -6, 0, 6)
+				TypeBadge.AnchorPoint = Vector2.new(1, 0)
+				TypeBadge.BackgroundColor3 = badgeColor
+				TypeBadge.BackgroundTransparency = 0.65
+				TypeBadge.BorderSizePixel = 0
+				TypeBadge.ZIndex = 203
+				Instance.new("UICorner", TypeBadge).CornerRadius = UDim.new(0, 4)
+				local BP = Instance.new("UIPadding", TypeBadge)
+				BP.PaddingLeft = UDim.new(0, 4)
+				BP.PaddingRight = UDim.new(0, 4)
+				local TypeLabel = Instance.new("TextLabel", TypeBadge)
+				TypeLabel.Size = UDim2.new(0, 0, 1, 0)
+				TypeLabel.AutomaticSize = Enum.AutomaticSize.X
+				TypeLabel.BackgroundTransparency = 1
+				TypeLabel.Text = elementData.Type:upper()
+				TypeLabel.Font = Enum.Font.GothamBold
+				TypeLabel.TextSize = 7
+				TypeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				TypeLabel.ZIndex = 204
 
-						-- Clickable overlay
-						local Btn = Instance.new("TextButton", row)
-						Btn.Size = UDim2.new(1, 0, 1, 0)
-						Btn.BackgroundTransparency = 1
-						Btn.Text = ""
-						Btn.ZIndex = 205
-						Btn.AutoButtonColor = false
-						Btn.MouseButton1Click:Connect(function()
-							if ref.Set then
-								ref:Set(not ref.Toggled)
-							end
-						end)
-						Btn.MouseEnter:Connect(function()
-							TweenService:Create(row, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
-						end)
-						Btn.MouseLeave:Connect(function()
-							TweenService:Create(row, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
-						end)
-					elseif elementData.Type == "Button" and ref then
-						local Btn = Instance.new("TextButton", row)
-						Btn.Size = UDim2.new(1, 0, 1, 0)
-						Btn.BackgroundTransparency = 1
-						Btn.Text = ""
-						Btn.ZIndex = 205
-						Btn.AutoButtonColor = false
-						Btn.MouseButton1Click:Connect(function()
-							if ref.Callback then ref.Callback() end
-						end)
-						Btn.MouseEnter:Connect(function()
-							TweenService:Create(row, TweenInfo.new(0.1), {BackgroundTransparency = 0.2}):Play()
-						end)
-						Btn.MouseLeave:Connect(function()
-							TweenService:Create(row, TweenInfo.new(0.1), {BackgroundTransparency = 0.5}):Play()
-						end)
-					elseif elementData.Type == "Slider" and ref then
-						local ValLabel = Instance.new("TextLabel", row)
-						ValLabel.Position = UDim2.new(0, 8, 0.5, 0)
-						ValLabel.AnchorPoint = Vector2.new(0, 0.5)
-						ValLabel.Size = UDim2.new(0, 60, 0, 14)
-						ValLabel.BackgroundTransparency = 1
-						ValLabel.Text = tostring(Library.Flags[ref.Flag] or ref.State)
-						ValLabel.Font = Enum.Font.GothamBold
-						ValLabel.TextSize = 10
-						ValLabel.TextColor3 = Library.Accent
-						ValLabel.TextXAlignment = Enum.TextXAlignment.Right
-						ValLabel.ZIndex = 204
-					elseif elementData.Type == "List" and ref then
-						local ValLabel = Instance.new("TextLabel", row)
-						ValLabel.Position = UDim2.new(0, 8, 0.5, 0)
-						ValLabel.AnchorPoint = Vector2.new(0, 0.5)
-						ValLabel.Size = UDim2.new(0, 60, 0, 14)
-						ValLabel.BackgroundTransparency = 1
-						ValLabel.Text = tostring(Library.Flags[ref.Flag] or "None")
-						ValLabel.Font = Enum.Font.Gotham
-						ValLabel.TextSize = 9
-						ValLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
-						ValLabel.TextXAlignment = Enum.TextXAlignment.Right
-						ValLabel.ZIndex = 204
-						ValLabel.TextTruncate = Enum.TextTruncate.AtEnd
-					end
-				end
-				AddInlineControl()
+				-- Navigate icon (arrow) bottom-right
+				local NavIcon = Instance.new("ImageLabel", Row)
+				NavIcon.Size = UDim2.fromOffset(10, 10)
+				NavIcon.Position = UDim2.new(1, -10, 1, -13)
+				NavIcon.AnchorPoint = Vector2.new(1, 0)
+				NavIcon.BackgroundTransparency = 1
+				NavIcon.Image = "rbxassetid://6034818372" -- chevron arrow
+				NavIcon.ImageColor3 = Color3.fromRGB(60, 60, 60)
+				NavIcon.ZIndex = 203
 
-				return row
+				-- Hover / click effects
+				Row.MouseEnter:Connect(function()
+					TweenService:Create(Row, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(32, 32, 32)}):Play()
+					TweenService:Create(RowStroke, TweenInfo.new(0.12), {Color = badgeColor}):Play()
+					TweenService:Create(NavIcon, TweenInfo.new(0.12), {ImageColor3 = badgeColor}):Play()
+					TweenService:Create(NameLabel, TweenInfo.new(0.12), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+				end)
+				Row.MouseLeave:Connect(function()
+					TweenService:Create(Row, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+					TweenService:Create(RowStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(35, 35, 35)}):Play()
+					TweenService:Create(NavIcon, TweenInfo.new(0.15), {ImageColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+					TweenService:Create(NameLabel, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
+				end)
+
+				-- Click: navigate to the element
+				Row.MouseButton1Click:Connect(function()
+					TweenService:Create(Row, TweenInfo.new(0.08), {BackgroundColor3 = badgeColor}):Play()
+					task.delay(0.1, function()
+						NavigateToElement(elementData)
+					end)
+				end)
+
+				return Row
 			end
 
 			-- The main search logic
@@ -1023,15 +1123,29 @@ do
 				end
 
 				if #results == 0 then
-					SearchResults.Visible = false
+					-- Show "no results" row
+					SearchResults.Size = UDim2.fromOffset(220, 44)
+					PositionSearchResults()
+					SearchResults.Visible = true
+					local NoRow = Instance.new("Frame", SearchScroll)
+					NoRow.Size = UDim2.new(1, 0, 0, 34)
+					NoRow.BackgroundTransparency = 1
+					NoRow.ZIndex = 202
+					local NoLabel = Instance.new("TextLabel", NoRow)
+					NoLabel.Size = UDim2.new(1, 0, 1, 0)
+					NoLabel.BackgroundTransparency = 1
+					NoLabel.Text = "No results for \"" .. query .. "\""
+					NoLabel.Font = Enum.Font.Gotham
+					NoLabel.TextSize = 10
+					NoLabel.TextColor3 = Color3.fromRGB(60, 60, 60)
+					NoLabel.ZIndex = 203
 					return
 				end
 
-				-- Cap visible height at 5 rows
-				local rowH = 30
-				local gap = 2
+				local rowH = 38
+				local gap = 3
 				local pad = 10
-				local maxRows = math.min(#results, 6)
+				local maxRows = math.min(#results, 5)
 				SearchResults.Size = UDim2.fromOffset(220, maxRows * (rowH + gap) + pad)
 
 				PositionSearchResults()
@@ -1294,33 +1408,17 @@ do
 
 			-- =============================================
 			-- BACKGROUND IMAGE: runtime setter
+			-- Accepts rbxassetid://, rbxthumb://, or any
+			-- https:// URL (requires getcustomasset).
+			-- Examples:
+			--   window:SetBackground("rbxassetid://12345678")
+			--   window:SetBackground("https://i.imgur.com/abc.png", 0.3)
+			--   window:SetBackground("https://files.catbox.moe/xyz.jpg", 0.2)
 			-- =============================================
-			-- Call on the window after creation:
-			--   window:SetBackground("rbxassetid://12345678", 0.3)
-			function Window:SetBackground(imageId, transparency)
-				if Library.BackgroundImageLabel then
-					Library.BackgroundImageLabel.Image = imageId or ""
-					Library.BackgroundImageLabel.ImageTransparency = transparency or 0.35
-				else
-					-- Create it on-the-fly if not set at creation time
-					local BgImage = Instance.new("ImageLabel", Inline)
-					BgImage.Name = "BackgroundImage"
-					BgImage.Image = imageId or ""
-					BgImage.ScaleType = Enum.ScaleType.Crop
-					BgImage.Size = UDim2.new(1, 0, 1, 0)
-					BgImage.Position = UDim2.new(0, 0, 0, 0)
-					BgImage.BackgroundTransparency = 1
-					BgImage.ImageTransparency = transparency or 0.35
-					BgImage.ZIndex = 50
-					BgImage.BorderSizePixel = 0
-					local BgOverlay = Instance.new("Frame", BgImage)
-					BgOverlay.Size = UDim2.new(1, 0, 1, 0)
-					BgOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-					BgOverlay.BackgroundTransparency = 0.45
-					BgOverlay.BorderSizePixel = 0
-					BgOverlay.ZIndex = 50
-					Library.BackgroundImageLabel = BgImage
-				end
+			function Window:SetBackground(imageSource, transparency)
+				task.spawn(function()
+					Library._ApplyBackground(imageSource, transparency)
+				end)
 			end
 
 			return setmetatable(Window, Library)
@@ -1815,6 +1913,8 @@ do
 				Ref = Toggle,
 				PageName = (Toggle.Section and Toggle.Section.Page and Toggle.Section.Page.Name) or "?",
 				SectionName = (Toggle.Section and Toggle.Section.Name) or "?",
+				PageRef = (Toggle.Section and Toggle.Section.Page) or nil,
+				GuiObject = NewToggle,
 			})
 
 			return Toggle
@@ -2070,6 +2170,8 @@ do
 				Ref = Slider,
 				PageName = (Slider.Section and Slider.Section.Page and Slider.Section.Page.Name) or "?",
 				SectionName = (Slider.Section and Slider.Section.Name) or "?",
+				PageRef = (Slider.Section and Slider.Section.Page) or nil,
+				GuiObject = NewSlider,
 			})
 
 			return Slider
@@ -2390,6 +2492,8 @@ do
 				Ref = Dropdown,
 				PageName = (Dropdown.Section and Dropdown.Section.Page and Dropdown.Section.Page.Name) or "?",
 				SectionName = (Dropdown.Section and Dropdown.Section.Name) or "?",
+				PageRef = (Dropdown.Section and Dropdown.Section.Page) or nil,
+				GuiObject = NewDropdown,
 			})
 
 			return Dropdown
@@ -2472,6 +2576,8 @@ do
 				Ref = Colorpicker,
 				PageName = (Colorpicker.Section and Colorpicker.Section.Page and Colorpicker.Section.Page.Name) or "?",
 				SectionName = (Colorpicker.Section and Colorpicker.Section.Name) or "?",
+				PageRef = (Colorpicker.Section and Colorpicker.Section.Page) or nil,
+				GuiObject = NewColor,
 			})
 
 			return Colorpicker
@@ -2650,6 +2756,8 @@ do
 				Ref = Keybind,
 				PageName = (Keybind.Section and Keybind.Section.Page and Keybind.Section.Page.Name) or "?",
 				SectionName = (Keybind.Section and Keybind.Section.Name) or "?",
+				PageRef = (Keybind.Section and Keybind.Section.Page) or nil,
+				GuiObject = NewKey,
 			})
 
 			return Keybind
@@ -2750,6 +2858,8 @@ do
 				Ref = Textbox,
 				PageName = (Textbox.Section and Textbox.Section.Page and Textbox.Section.Page.Name) or "?",
 				SectionName = (Textbox.Section and Textbox.Section.Name) or "?",
+				PageRef = (Textbox.Section and Textbox.Section.Page) or nil,
+				GuiObject = NewBox,
 			})
 
 			return Textbox
@@ -2830,6 +2940,8 @@ do
 				Ref = Button,
 				PageName = (Button.Section and Button.Section.Page and Button.Section.Page.Name) or "?",
 				SectionName = (Button.Section and Button.Section.Name) or "?",
+				PageRef = (Button.Section and Button.Section.Page) or nil,
+				GuiObject = NewButton,
 			})
 		end
 
