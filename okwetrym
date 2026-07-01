@@ -801,25 +801,10 @@ do
 					Library.BackgroundImageLabel.Image = resolved
 					Library.BackgroundImageLabel.ImageTransparency = trans
 				else
-					-- Parent to Outline (ZIndex 50) so it sits behind Inline.
-					-- Make Inline transparent so the image shows through.
-					Inline.BackgroundTransparency = 1
-
-					-- Also make the Holder (right content area) and Sidebar transparent
-					-- so the background image bleeds through the whole UI.
-					-- We do this by finding them after they're created via a deferred check.
-					task.defer(function()
-						for _, child in ipairs(Inline:GetChildren()) do
-							if child:IsA("Frame") and (child.Name == "Holder" or child.Name == "Sidebar") then
-								child.BackgroundTransparency = 1
-								-- Also kill their UIGradients temporarily
-								for _, gc in ipairs(child:GetChildren()) do
-									if gc:IsA("UIGradient") then gc.Enabled = false end
-								end
-							end
-						end
-					end)
-
+					-- Place image inside Outline at the lowest ZIndex so it sits
+					-- behind all UI chrome. Then walk the entire UI tree and make
+					-- every Frame/ScrollingFrame transparent so the image bleeds
+					-- through sections, tabs, sidebar, holder — everything.
 					local BgImage = Instance.new("ImageLabel", Outline)
 					BgImage.Name = "BackgroundImage"
 					BgImage.Image = resolved
@@ -828,19 +813,56 @@ do
 					BgImage.Position = UDim2.new(0, 0, 0, 0)
 					BgImage.BackgroundTransparency = 1
 					BgImage.ImageTransparency = trans
-					BgImage.ZIndex = 1  -- behind everything (Outline is 50, children start above)
+					BgImage.ZIndex = 1
 					BgImage.BorderSizePixel = 0
-
-					-- Dark overlay keeps text/elements readable over any image
-					local BgOverlay = Instance.new("Frame", BgImage)
-					BgOverlay.Name = "BgOverlay"
-					BgOverlay.Size = UDim2.new(1, 0, 1, 0)
-					BgOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-					BgOverlay.BackgroundTransparency = 0.45
-					BgOverlay.BorderSizePixel = 0
-					BgOverlay.ZIndex = 1
-
 					Library.BackgroundImageLabel = BgImage
+
+					-- Frames to skip making transparent (they are decorative
+					-- and should keep some opacity for contrast)
+					local KEEP_OPAQUE = {
+						-- toggle/slider pill backgrounds need to stay visible
+						ToggleFrame = true,
+						FillHold = true,
+						Circle = true,
+					}
+
+					-- Walk the whole Outline tree and strip backgrounds off
+					-- every Frame/ScrollingFrame except ones we want to keep.
+					local function StripBackgrounds(root)
+						for _, obj in ipairs(root:GetDescendants()) do
+							if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+								local n = obj.Name
+								-- Keep toggle/slider pill UI readable
+								if n == "NewToggle" or n == "FillHold" or n == "Fill" then
+									-- leave them
+								else
+									obj.BackgroundTransparency = 1
+								end
+								-- Disable gradients so they don't repaint backgrounds
+								for _, gc in ipairs(obj:GetChildren()) do
+									if gc:IsA("UIGradient") then gc.Enabled = false end
+								end
+							end
+						end
+					end
+
+					-- Run immediately for already-created children
+					StripBackgrounds(Outline)
+
+					-- Also hook new descendants so pages/sections added later are covered
+					Outline.DescendantAdded:Connect(function(obj)
+						if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+							if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+								local n = obj.Name
+								if n ~= "NewToggle" and n ~= "FillHold" and n ~= "Fill" then
+									obj.BackgroundTransparency = 1
+								end
+								for _, gc in ipairs(obj:GetChildren()) do
+									if gc:IsA("UIGradient") then gc.Enabled = false end
+								end
+							end
+						end
+					end)
 				end
 			end
 
@@ -906,7 +928,7 @@ do
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
 			SearchBarFrame.Position = UDim2.new(0, 4, 0, 76)
-			SearchBarFrame.Size = UDim2.new(1, -10, 0, 26)
+			SearchBarFrame.Size = UDim2.new(1, -10, 0, 22)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -916,7 +938,7 @@ do
 			SearchStroke.Thickness = 1
 
 			local SearchIcon = Instance.new("ImageLabel", SearchBarFrame)
-			SearchIcon.Size = UDim2.fromOffset(12, 12)
+			SearchIcon.Size = UDim2.fromOffset(10, 10)
 			SearchIcon.Position = UDim2.new(0, 7, 0.5, 0)
 			SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
 			SearchIcon.BackgroundTransparency = 1
@@ -931,7 +953,7 @@ do
 			SearchBox.PlaceholderColor3 = Color3.fromRGB(60, 60, 60)
 			SearchBox.Text = ""
 			SearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
-			SearchBox.TextSize = 11
+			SearchBox.TextSize = 10
 			SearchBox.TextXAlignment = Enum.TextXAlignment.Left
 			SearchBox.BackgroundTransparency = 1
 			SearchBox.BorderSizePixel = 0
