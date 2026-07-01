@@ -986,16 +986,9 @@ do
 			-- Helper: create a search result row
 			-- elementData = { Type, Name, Ref, PageName, SectionName, PageRef, GuiObject }
 			local function CreateSearchRow(elementData)
-				local typeColors = {
-					Toggle     = Color3.fromRGB(255, 60, 60),
-					Slider     = Color3.fromRGB(60, 140, 255),
-					List       = Color3.fromRGB(180, 70, 255),
-					Colorpicker= Color3.fromRGB(255, 190, 30),
-					Keybind    = Color3.fromRGB(50, 210, 130),
-					Button     = Color3.fromRGB(200, 200, 200),
-					Textbox    = Color3.fromRGB(80, 210, 255),
-				}
-				local badgeColor = typeColors[elementData.Type] or Color3.fromRGB(100, 100, 100)
+				-- All rows use the UI accent color — consistent with the rest of the UI theme.
+				-- The type label still shows the element kind so users can tell them apart.
+				local accent = Library.Accent
 
 				-- Row button (entire row is clickable)
 				local Row = Instance.new("TextButton", SearchScroll)
@@ -1010,15 +1003,18 @@ do
 				local RowStroke = Instance.new("UIStroke", Row)
 				RowStroke.Color = Color3.fromRGB(35, 35, 35)
 				RowStroke.Thickness = 1
+				-- Track in ThemeObjects so accent changes apply live
+				table.insert(Library.ThemeObjects, RowStroke)
 
-				-- Left accent bar (type color)
+				-- Left accent bar — UI accent color
 				local AccentBar = Instance.new("Frame", Row)
 				AccentBar.Size = UDim2.new(0, 3, 0.6, 0)
 				AccentBar.Position = UDim2.new(0, 0, 0.2, 0)
-				AccentBar.BackgroundColor3 = badgeColor
+				AccentBar.BackgroundColor3 = accent
 				AccentBar.BorderSizePixel = 0
 				AccentBar.ZIndex = 203
 				Instance.new("UICorner", AccentBar).CornerRadius = UDim.new(1, 0)
+				table.insert(Library.ThemeObjects, AccentBar)
 
 				-- Element name
 				local NameLabel = Instance.new("TextLabel", Row)
@@ -1046,17 +1042,18 @@ do
 				BreadLabel.ZIndex = 203
 				BreadLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-				-- Type pill badge (top-right)
+				-- Type pill badge (top-right) — accent color
 				local TypeBadge = Instance.new("Frame", Row)
 				TypeBadge.Size = UDim2.fromOffset(0, 14)
 				TypeBadge.AutomaticSize = Enum.AutomaticSize.X
 				TypeBadge.Position = UDim2.new(1, -6, 0, 6)
 				TypeBadge.AnchorPoint = Vector2.new(1, 0)
-				TypeBadge.BackgroundColor3 = badgeColor
-				TypeBadge.BackgroundTransparency = 0.65
+				TypeBadge.BackgroundColor3 = accent
+				TypeBadge.BackgroundTransparency = 0.6
 				TypeBadge.BorderSizePixel = 0
 				TypeBadge.ZIndex = 203
 				Instance.new("UICorner", TypeBadge).CornerRadius = UDim.new(0, 4)
+				table.insert(Library.ThemeObjects, TypeBadge)
 				local BP = Instance.new("UIPadding", TypeBadge)
 				BP.PaddingLeft = UDim.new(0, 4)
 				BP.PaddingRight = UDim.new(0, 4)
@@ -1070,33 +1067,34 @@ do
 				TypeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 				TypeLabel.ZIndex = 204
 
-				-- Navigate icon (arrow) bottom-right
+				-- Navigate icon (arrow) bottom-right — dim until hover
 				local NavIcon = Instance.new("ImageLabel", Row)
 				NavIcon.Size = UDim2.fromOffset(10, 10)
 				NavIcon.Position = UDim2.new(1, -10, 1, -13)
 				NavIcon.AnchorPoint = Vector2.new(1, 0)
 				NavIcon.BackgroundTransparency = 1
-				NavIcon.Image = "rbxassetid://6034818372" -- chevron arrow
-				NavIcon.ImageColor3 = Color3.fromRGB(60, 60, 60)
+				NavIcon.Image = "rbxassetid://6034818372"
+				NavIcon.ImageColor3 = Color3.fromRGB(55, 55, 55)
 				NavIcon.ZIndex = 203
 
-				-- Hover / click effects
+				-- Hover: stroke + nav icon go accent, name brightens
 				Row.MouseEnter:Connect(function()
-					TweenService:Create(Row, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(32, 32, 32)}):Play()
-					TweenService:Create(RowStroke, TweenInfo.new(0.12), {Color = badgeColor}):Play()
-					TweenService:Create(NavIcon, TweenInfo.new(0.12), {ImageColor3 = badgeColor}):Play()
+					local a = Library.Accent
+					TweenService:Create(Row,       TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(30, 30, 30)}):Play()
+					TweenService:Create(RowStroke, TweenInfo.new(0.12), {Color = a}):Play()
+					TweenService:Create(NavIcon,   TweenInfo.new(0.12), {ImageColor3 = a}):Play()
 					TweenService:Create(NameLabel, TweenInfo.new(0.12), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
 				end)
 				Row.MouseLeave:Connect(function()
-					TweenService:Create(Row, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+					TweenService:Create(Row,       TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
 					TweenService:Create(RowStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(35, 35, 35)}):Play()
-					TweenService:Create(NavIcon, TweenInfo.new(0.15), {ImageColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+					TweenService:Create(NavIcon,   TweenInfo.new(0.15), {ImageColor3 = Color3.fromRGB(55, 55, 55)}):Play()
 					TweenService:Create(NameLabel, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
 				end)
 
-				-- Click: navigate to the element
+				-- Click: flash row with accent then navigate
 				Row.MouseButton1Click:Connect(function()
-					TweenService:Create(Row, TweenInfo.new(0.08), {BackgroundColor3 = badgeColor}):Play()
+					TweenService:Create(Row, TweenInfo.new(0.08), {BackgroundColor3 = Library.Accent}):Play()
 					task.delay(0.1, function()
 						NavigateToElement(elementData)
 					end)
