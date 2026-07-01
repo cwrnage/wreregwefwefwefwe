@@ -639,6 +639,17 @@ do
 		local Pages = Library.Pages;
 		local Sections = Library.Sections;
 
+		-- Stamps a dark outline stroke on any TextLabel/TextButton
+		-- so text stays legible over any background image.
+		local function AddTextStroke(label, thickness, transparency)
+			local s = Instance.new("UIStroke", label)
+			s.Color = Color3.fromRGB(0, 0, 0)
+			s.Thickness = thickness or 1.2
+			s.Transparency = transparency or 0.1
+			s.LineJoinMode = Enum.LineJoinMode.Round
+			return s
+		end
+
 		function Library:New(Properties)
 			if not Properties then
 				Properties = {}
@@ -894,8 +905,8 @@ do
 			-- =============================================
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
-			SearchBarFrame.Position = UDim2.new(0, 6, 0, 76)
-			SearchBarFrame.Size = UDim2.new(1, -14, 0, 26)
+			SearchBarFrame.Position = UDim2.new(0, 4, 0, 76)
+			SearchBarFrame.Size = UDim2.new(1, -10, 0, 26)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1613,12 +1624,12 @@ do
 			end
 
 			Left.Name = "Left"
-			Left.Size = UDim2.new(0.5, -5, 1, 0)
+			Left.Size = UDim2.new(0.5, -3, 1, 0)
 			Left.Position = UDim2.new(0, 0, 0, 0)
 
 			Right.Name = "Right"
-			Right.Size = UDim2.new(0.5, -5, 1, 0)
-			Right.Position = UDim2.new(0.5, 5, 0, 0)
+			Right.Size = UDim2.new(0.5, -3, 1, 0)
+			Right.Position = UDim2.new(0.5, 3, 0, 0)
 
 			local function SetupColumn(column)
 				local layout = Instance.new("UIListLayout", column)
@@ -1702,7 +1713,8 @@ do
 				or Section.Page.Elements.Right
 
 			local Frame = Instance.new("Frame", Parent)
-			Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+			Frame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+			Frame.BackgroundTransparency = 0.3
 			Frame.BorderSizePixel = 0
 			Frame.LayoutOrder = #Section.Page.Sections + 1
 			Frame.ZIndex = 55
@@ -1717,15 +1729,10 @@ do
 
 			Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
 			local FrameStroke = Instance.new("UIStroke", Frame)
-			FrameStroke.Color = Color3.fromRGB(30, 30, 30)
+			FrameStroke.Color = Color3.fromRGB(70, 70, 70)
 			FrameStroke.Thickness = 1
-
-			local FrameGrad = Instance.new("UIGradient", Frame)
-			FrameGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(20,20,20)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(13,13,13)),
-			})
-			FrameGrad.Rotation = 90
+			FrameStroke.Transparency = 0.4
+			-- No gradient — semi-transparent fill lets background image show through
 
 			local HeaderRow = Instance.new("Frame", Frame)
 			HeaderRow.Name = "HeaderRow"
@@ -1758,9 +1765,13 @@ do
 			HeaderTitle.Text = Section.Name
 			HeaderTitle.Font = Enum.Font.GothamBold
 			HeaderTitle.TextSize = 11
-			HeaderTitle.TextColor3 = Section.Color or Color3.fromRGB(160, 160, 160)
+			HeaderTitle.TextColor3 = Section.Color or Color3.fromRGB(200, 200, 200)
 			HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
 			HeaderTitle.ZIndex = 57
+			local HeaderStroke = Instance.new("UIStroke", HeaderTitle)
+			HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
+			HeaderStroke.Thickness = 1.5
+			HeaderStroke.Transparency = 0.2
 
 			if Section.Badge then
 				local BadgeFrame = Instance.new("Frame", HeaderRow)
@@ -1862,10 +1873,11 @@ do
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Text = Toggle.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180,180,180)
+			ToggleTitle.TextColor3 = Color3.fromRGB(210,210,210)
 			ToggleTitle.Font = Enum.Font.Gotham
 			ToggleTitle.TextSize = Library.FontSize
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(ToggleTitle)
 
 			ToggleFrame.Position = UDim2.new(1,-34,0.5,-7)
 			ToggleFrame.Size = UDim2.new(0,34,0,15)
@@ -2131,10 +2143,11 @@ do
 			SliderTitle.BackgroundTransparency = 1
 			SliderTitle.BorderSizePixel = 0
 			SliderTitle.Text = Slider.Name
-			SliderTitle.TextColor3 = Color3.fromRGB(180,180,180)
+			SliderTitle.TextColor3 = Color3.fromRGB(210,210,210)
 			SliderTitle.Font = Enum.Font.Gotham
 			SliderTitle.TextSize = Library.FontSize
 			SliderTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(SliderTitle)
 
 			ToggleFrame.Position = UDim2.new(0,0,1,-9)
 			ToggleFrame.Size = UDim2.new(1,0,0,9)
@@ -2172,10 +2185,11 @@ do
 			SliderValue.BackgroundTransparency = 1
 			SliderValue.BorderSizePixel = 0
 			SliderValue.Text = ""
-			SliderValue.TextColor3 = Color3.fromRGB(100,100,100)
+			SliderValue.TextColor3 = Color3.fromRGB(160,160,160)
 			SliderValue.Font = Enum.Font.Gotham
 			SliderValue.TextSize = Library.FontSize
 			SliderValue.TextXAlignment = Enum.TextXAlignment.Right
+			AddTextStroke(SliderValue)
 
 			local Sliding = false
 			local Val = Slider.State
@@ -2283,10 +2297,11 @@ do
 			DropdownTitle.BackgroundTransparency = 1
 			DropdownTitle.BorderSizePixel = 0
 			DropdownTitle.Text = Dropdown.Name or ""
-			DropdownTitle.TextColor3 = Color3.fromRGB(180,180,180)
+			DropdownTitle.TextColor3 = Color3.fromRGB(210,210,210)
 			DropdownTitle.Font = Enum.Font.Gotham
 			DropdownTitle.TextSize = Library.FontSize
 			DropdownTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(DropdownTitle)
 
 			ToggleFrame.Position = UDim2.new(0,0,1,-24)
 			ToggleFrame.Size = UDim2.new(1,0,0,24)
@@ -2590,13 +2605,14 @@ do
 			local ToggleTitle = Instance.new("TextLabel")
 			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 			ToggleTitle.Text = Colorpicker.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+			ToggleTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			ToggleTitle.TextSize = 13
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Size = UDim2.new(1, -10, 0, 17)
 			ToggleTitle.Parent = NewColor
+			AddTextStroke(ToggleTitle)
 
 			Colorpicker.Colorpickers = Colorpicker.Colorpickers + 1
 			local colorpickertypes = Library:NewPicker(
@@ -2687,18 +2703,19 @@ do
 			local ToggleTitle = Instance.new("TextLabel")
 			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 			ToggleTitle.Text = Keybind.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+			ToggleTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			ToggleTitle.TextSize = 13
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Size = UDim2.new(1, -10, 0, 17)
 			ToggleTitle.Parent = NewKey
+			AddTextStroke(ToggleTitle)
 
 			local KeyText = Instance.new("TextLabel")
 			KeyText.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 			KeyText.Text = "None"
-			KeyText.TextColor3 = Color3.fromRGB(100, 100, 100)
+			KeyText.TextColor3 = Color3.fromRGB(150, 150, 150)
 			KeyText.TextSize = 12
 			KeyText.TextXAlignment = Enum.TextXAlignment.Right
 			KeyText.BackgroundTransparency = 1
@@ -2856,7 +2873,7 @@ do
 				local TitleLabel = Instance.new("TextLabel")
 				TitleLabel.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 				TitleLabel.Text = TextboxName
-				TitleLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+				TitleLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 				TitleLabel.TextSize = 12
 				TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 				TitleLabel.BackgroundTransparency = 1
@@ -2864,6 +2881,7 @@ do
 				TitleLabel.Size = UDim2.new(1, -8, 0, 20)
 				TitleLabel.ZIndex = 55
 				TitleLabel.Parent = NewBox
+				AddTextStroke(TitleLabel)
 			end
 
 			local ToggleFrame = Instance.new("Frame")
@@ -2970,13 +2988,14 @@ do
 			local DropdownTitle = Instance.new("TextLabel")
 			DropdownTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 			DropdownTitle.Text = Button.Name
-			DropdownTitle.TextColor3 = Color3.fromRGB(190, 190, 190)
+			DropdownTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			DropdownTitle.TextSize = 12
 			DropdownTitle.BackgroundTransparency = 1
 			DropdownTitle.BorderSizePixel = 0
 			DropdownTitle.Size = UDim2.fromScale(1, 1)
 			DropdownTitle.ZIndex = 57
 			DropdownTitle.Parent = ToggleFrame
+			AddTextStroke(DropdownTitle)
 
 			ToggleFrame.Parent = NewButton
 
