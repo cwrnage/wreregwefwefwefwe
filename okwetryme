@@ -703,8 +703,13 @@ do
 
 			-- Helper that resolves any image source into a string
 			-- that ImageLabel.Image can use.
+			-- For HTTP/HTTPS URLs: downloads the file locally first,
+			-- then passes the local path to getcustomasset (which is
+			-- what executors actually support — they can't fetch URLs
+			-- directly, only local files).
 			local function ResolveImageSource(src)
 				if type(src) ~= "string" or src == "" then return "" end
+
 				-- Already a Roblox asset / thumb URL → use as-is
 				if src:sub(1, 13) == "rbxassetid://"
 				or src:sub(1, 11) == "rbxthumb://"
@@ -712,24 +717,60 @@ do
 				or src:sub(1, 7)  == "rbxhttp" then
 					return src
 				end
-				-- HTTP/HTTPS URL → needs getcustomasset
+
+				-- HTTP/HTTPS URL:
+				-- Step 1 — download the image bytes via HttpGet
+				-- Step 2 — write to a local temp file
+				-- Step 3 — pass that local path to getcustomasset
 				if src:sub(1, 4) == "http" then
-					if getcustomasset then
-						local ok, result = pcall(getcustomasset, src)
-						if ok and result then
-							return result
-						else
-							warn("[UI Background] getcustomasset failed for: " .. src .. "\nReason: " .. tostring(result))
-							return ""
+					-- Check required functions exist
+					if not writefile or not getcustomasset then
+						if not writefile then
+							warn("[UI Background] writefile is not available in this executor. Cannot load external image URLs.")
 						end
-					else
-						warn("[UI Background] Your executor does not support getcustomasset. " ..
-							"External image URLs cannot be loaded. " ..
-							"Use an rbxassetid:// instead, or switch to an executor that supports getcustomasset (e.g. Potassium, Volt, Delta).")
+						if not getcustomasset then
+							warn("[UI Background] getcustomasset is not available in this executor. Cannot load external image URLs. Use rbxassetid:// instead.")
+						end
 						return ""
 					end
+
+					-- Derive a safe filename from the URL
+					-- e.g. "https://i.imgur.com/abc.png" → "UIBackground_abc.png"
+					local ext = src:match("%.(%a+)%??") or "png"
+					-- Only allow known image extensions
+					if ext ~= "png" and ext ~= "jpg" and ext ~= "jpeg" and ext ~= "gif" and ext ~= "webp" then
+						ext = "png"
+					end
+					local filename = "UIBackground_cache." .. ext
+					local localPath = filename -- executors resolve from their working dir
+
+					-- Download
+					local dlOk, dlResult = pcall(function()
+						return game:HttpGet(src)
+					end)
+					if not dlOk or not dlResult or dlResult == "" then
+						warn("[UI Background] Failed to download image from: " .. src .. "\nReason: " .. tostring(dlResult))
+						return ""
+					end
+
+					-- Write to disk
+					local writeOk, writeErr = pcall(writefile, localPath, dlResult)
+					if not writeOk then
+						warn("[UI Background] Failed to write image to disk.\nReason: " .. tostring(writeErr))
+						return ""
+					end
+
+					-- Get custom asset from local file
+					local assetOk, assetResult = pcall(getcustomasset, localPath)
+					if not assetOk or not assetResult or assetResult == "" then
+						warn("[UI Background] getcustomasset failed for local file: " .. localPath .. "\nReason: " .. tostring(assetResult))
+						return ""
+					end
+
+					return assetResult
 				end
-				-- Fallback: pass through and let Roblox handle it
+
+				-- Fallback: pass through as-is
 				return src
 			end
 
@@ -827,8 +868,8 @@ do
 			-- =============================================
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
-			SearchBarFrame.Position = UDim2.new(0, 8, 0, 76)
-			SearchBarFrame.Size = UDim2.new(1, -16, 0, 26)
+			SearchBarFrame.Position = UDim2.new(0, 6, 0, 76)
+			SearchBarFrame.Size = UDim2.new(1, -14, 0, 26)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
