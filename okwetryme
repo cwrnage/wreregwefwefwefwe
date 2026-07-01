@@ -725,7 +725,7 @@ do
 					else
 						warn("[UI Background] Your executor does not support getcustomasset. " ..
 							"External image URLs cannot be loaded. " ..
-							"Use an rbxassetid:// instead, or switch to an executor that supports getcustomasset (e.g. Synapse X, KRNL, Delta).")
+							"Use an rbxassetid:// instead, or switch to an executor that supports getcustomasset (e.g. Potassium, Volt, Delta).")
 						return ""
 					end
 				end
