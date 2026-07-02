@@ -1043,7 +1043,7 @@ do
 			SearchResults.Name = "SearchResults"
 			SearchResults.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
 			SearchResults.BorderSizePixel = 0
-			SearchResults.Size = UDim2.fromOffset(220, 0)
+			SearchResults.Size = UDim2.fromOffset(170, 0)
 			SearchResults.AutomaticSize = Enum.AutomaticSize.None
 			SearchResults.Visible = false
 			SearchResults.ZIndex = 200
@@ -1298,7 +1298,7 @@ do
 
 				if #results == 0 then
 					-- Show "no results" row
-					SearchResults.Size = UDim2.fromOffset(220, 44)
+					SearchResults.Size = UDim2.fromOffset(170, 44)
 					PositionSearchResults()
 					SearchResults.Visible = true
 					local NoRow = Instance.new("Frame", SearchScroll)
@@ -1320,7 +1320,7 @@ do
 				local gap = 3
 				local pad = 10
 				local maxRows = math.min(#results, 5)
-				SearchResults.Size = UDim2.fromOffset(220, maxRows * (rowH + gap) + pad)
+				SearchResults.Size = UDim2.fromOffset(170, maxRows * (rowH + gap) + pad)
 
 				PositionSearchResults()
 				SearchResults.Visible = true
@@ -1709,8 +1709,8 @@ do
 			end)
 
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
-			NewPage.Position = UDim2.new(0, 8, 0, 8)
-			NewPage.Size = UDim2.new(1, -16, 1, -16)
+			NewPage.Position = UDim2.new(0, 4, 0, 8)
+			NewPage.Size = UDim2.new(1, -12, 1, -16)
 			NewPage.BackgroundTransparency = 1
 			NewPage.Visible = false
 			NewPage.ZIndex = 53
