@@ -947,6 +947,11 @@ do
 
 			Library._ApplyBackground  = ApplyBackground
 			Library._DisableBackground = DisableBackground
+
+			-- === FIX: CARD_HEIGHT was previously undefined here, causing
+			-- "attempt to perform arithmetic (add) on nil and number"
+			-- when CARD_TOTAL was computed below. Declared explicitly now.
+			local CARD_HEIGHT = 58
 			local CARD_MARGIN = 8
 			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2
 
