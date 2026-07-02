@@ -786,6 +786,133 @@ do
 			end
 
 			-- Internal helper that builds or updates the background ImageLabel
+			-- Snapshot of original transparencies so we can fully restore on disable
+			local _bgSnapshot = {}  -- { [obj] = originalTransparency }
+			local _bgGlowSnapshot = {}  -- { [obj] = { origColor, origStroke or nil } }
+			local _bgDescConn = nil
+			local _bgActive = false
+
+			-- These frame names stay fully opaque — their backgrounds are
+			-- the actual visible element UI (toggle track, slider bar, button, textbox input, etc.)
+			local BG_KEEP_OPAQUE = {
+				ToggleFrame    = true,  -- shared by: toggle pill, button bg, dropdown row, textbox input
+				ToggleAccent   = true,  -- toggle fill color
+				Circle         = true,  -- toggle knob
+				Fill           = true,  -- slider filled portion
+				FillHold       = true,  -- slider fill container
+				PlayerCard     = true,  -- bottom-of-sidebar player card
+				AvatarFrame    = true,  -- avatar circle inside card
+				ExecutorBadge  = true,  -- executor name pill
+				SearchBarFrame = true,  -- search input bar
+				SearchResults  = true,  -- search results dropdown
+				HoverFill      = true,  -- tab button hover tint
+				ActiveFill     = true,  -- tab button active tint
+				AccentBar      = true,  -- tab left accent stripe
+				BtnShimmer     = true,  -- button click flash
+				ToggleContent  = true,  -- dropdown option list panel
+				Outline        = true,  -- top-level window border (has the image as child)
+				Inline         = true,  -- immediate child of Outline — keep 1px border look
+			}
+
+			local function EnableBackground(BgImage)
+				_bgActive = true
+				-- Walk tree and snapshot + transparentize everything not in keep list
+				for _, obj in ipairs(Outline:GetDescendants()) do
+					if obj == BgImage then continue end
+					if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+						_bgSnapshot[obj] = obj.BackgroundTransparency
+						obj.BackgroundTransparency = 1
+						-- disable gradients that repaint solid colours
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = false end
+						end
+					end
+					-- Glow every text object
+					if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+						local existingStroke = obj:FindFirstChildOfClass("UIStroke")
+						local origColor = obj:IsA("TextBox") and nil or obj.TextColor3
+						_bgGlowSnapshot[obj] = { color = origColor, hadStroke = existingStroke ~= nil }
+						if existingStroke then existingStroke:Destroy() end
+						local stroke = Instance.new("UIStroke", obj)
+						stroke.Name        = "_BgGlowStroke"
+						stroke.Color       = Color3.fromRGB(0, 0, 0)
+						stroke.Thickness   = 1.6
+						stroke.Transparency = 0
+						stroke.LineJoinMode = Enum.LineJoinMode.Round
+						-- brighten text
+						if origColor then
+							local h, s, v = origColor:ToHSV()
+							obj.TextColor3 = Color3.fromHSV(h, s, math.min(v + 0.28, 1))
+						end
+					end
+				end
+
+				-- Watch for new descendants (sections/pages added after bg enabled)
+				if _bgDescConn then _bgDescConn:Disconnect() end
+				_bgDescConn = Outline.DescendantAdded:Connect(function(obj)
+					if not _bgActive then return end
+					task.defer(function()
+						if not _bgActive then return end
+						if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+							_bgSnapshot[obj] = obj.BackgroundTransparency
+							obj.BackgroundTransparency = 1
+							for _, gc in ipairs(obj:GetChildren()) do
+								if gc:IsA("UIGradient") then gc.Enabled = false end
+							end
+						end
+						if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+							local existingStroke = obj:FindFirstChildOfClass("UIStroke")
+							local origColor = obj:IsA("TextBox") and nil or obj.TextColor3
+							_bgGlowSnapshot[obj] = { color = origColor, hadStroke = existingStroke ~= nil }
+							if existingStroke then existingStroke:Destroy() end
+							local stroke = Instance.new("UIStroke", obj)
+							stroke.Name        = "_BgGlowStroke"
+							stroke.Color       = Color3.fromRGB(0, 0, 0)
+							stroke.Thickness   = 1.6
+							stroke.Transparency = 0
+							stroke.LineJoinMode = Enum.LineJoinMode.Round
+							if origColor then
+								local h, s, v = origColor:ToHSV()
+								obj.TextColor3 = Color3.fromHSV(h, s, math.min(v + 0.28, 1))
+							end
+						end
+					end)
+				end)
+			end
+
+			local function DisableBackground()
+				_bgActive = false
+				if _bgDescConn then _bgDescConn:Disconnect(); _bgDescConn = nil end
+				-- Hide image
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					Library.BackgroundImageLabel.Image = ""
+					Library.BackgroundImageLabel.Visible = false
+				end
+				-- Restore all frame transparencies
+				for obj, origTrans in pairs(_bgSnapshot) do
+					if obj and obj.Parent then
+						obj.BackgroundTransparency = origTrans
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = true end
+						end
+					end
+				end
+				_bgSnapshot = {}
+				-- Restore all text glow
+				for obj, snap in pairs(_bgGlowSnapshot) do
+					if obj and obj.Parent then
+						-- Remove the glow stroke we added
+						local stroke = obj:FindFirstChild("_BgGlowStroke")
+						if stroke then stroke:Destroy() end
+						-- Restore original text colour
+						if snap.color and (obj:IsA("TextLabel") or obj:IsA("TextButton")) then
+							obj.TextColor3 = snap.color
+						end
+					end
+				end
+				_bgGlowSnapshot = {}
+			end
+
 			local function ApplyBackground(imgSrc, transparency)
 				local resolved = ResolveImageSource(imgSrc or "")
 				local trans = transparency or 0.35
@@ -795,16 +922,14 @@ do
 					return
 				end
 
-				print("[UI Background] Applying image: " .. resolved)
-
 				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
 					Library.BackgroundImageLabel.Image = resolved
 					Library.BackgroundImageLabel.ImageTransparency = trans
+					Library.BackgroundImageLabel.Visible = true
+					if not _bgActive then
+						EnableBackground(Library.BackgroundImageLabel)
+					end
 				else
-					-- Place image inside Outline at the lowest ZIndex so it sits
-					-- behind all UI chrome. Then walk the entire UI tree and make
-					-- every Frame/ScrollingFrame transparent so the image bleeds
-					-- through sections, tabs, sidebar, holder — everything.
 					local BgImage = Instance.new("ImageLabel", Outline)
 					BgImage.Name = "BackgroundImage"
 					BgImage.Image = resolved
@@ -816,95 +941,12 @@ do
 					BgImage.ZIndex = 1
 					BgImage.BorderSizePixel = 0
 					Library.BackgroundImageLabel = BgImage
-
-					-- Names that must stay opaque — buttons, toggle pills,
-					-- dropdown frames, slider track, player card, etc.
-					local KEEP_OPAQUE = {
-						ToggleFrame    = true,  -- toggle pill + button bg + dropdown bg + textbox bg (shared name)
-						ToggleAccent   = true,  -- toggle on-fill
-						Circle         = true,  -- toggle knob
-						Fill           = true,  -- slider fill bar
-						FillHold       = true,  -- slider fill holder
-						PlayerCard     = true,  -- player card
-						AvatarFrame    = true,  -- avatar circle
-						ExecutorBadge  = true,  -- executor pill
-						SearchBarFrame = true,  -- search bar
-						SearchResults  = true,  -- search results panel
-						HoverFill      = true,  -- tab hover fill
-						ActiveFill     = true,  -- tab active fill
-						AccentBar      = true,  -- tab left accent bar
-						BtnShimmer     = true,  -- button click shimmer
-					}
-
-					local function ShouldStrip(obj)
-						return not KEEP_OPAQUE[obj.Name]
-					end
-
-					local function StripBackgrounds(root)
-						for _, obj in ipairs(root:GetDescendants()) do
-							if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and ShouldStrip(obj) then
-								obj.BackgroundTransparency = 1
-								for _, gc in ipairs(obj:GetChildren()) do
-									if gc:IsA("UIGradient") then gc.Enabled = false end
-								end
-							end
-						end
-					end
-
-					-- Glow: bold dark outline stroke + bump brightness on every text object
-					local function GlowLabel(obj)
-						if not (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) then return end
-						local existing = obj:FindFirstChildOfClass("UIStroke")
-						if existing then existing:Destroy() end
-						local stroke = Instance.new("UIStroke", obj)
-						stroke.Color        = Color3.fromRGB(0, 0, 0)
-						stroke.Thickness    = 1.6
-						stroke.Transparency = 0
-						stroke.LineJoinMode = Enum.LineJoinMode.Round
-						-- Bump text brightness so it pops over any image
-						if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-							local h, s, v = obj.TextColor3:ToHSV()
-							if v < 0.82 then
-								obj.TextColor3 = Color3.fromHSV(h, s, math.min(v + 0.3, 1))
-							end
-						end
-					end
-
-					local function GlowAllText(root)
-						for _, obj in ipairs(root:GetDescendants()) do
-							GlowLabel(obj)
-						end
-					end
-
-					StripBackgrounds(Outline)
-					GlowAllText(Outline)
-
-					-- Keep up with elements added after background is applied (new pages/sections)
-					Outline.DescendantAdded:Connect(function(obj)
-						if not (Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent) then return end
-						task.defer(function()
-							if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and ShouldStrip(obj) then
-								obj.BackgroundTransparency = 1
-								for _, gc in ipairs(obj:GetChildren()) do
-									if gc:IsA("UIGradient") then gc.Enabled = false end
-								end
-							end
-							GlowLabel(obj)
-						end)
-					end)
+					EnableBackground(BgImage)
 				end
 			end
 
-			-- Apply at creation time if a source was passed
-			if Properties.BackgroundImage then
-				task.spawn(function()
-					ApplyBackground(Properties.BackgroundImage, Properties.BackgroundTransparency)
-				end)
-			end
-
-			Library._ApplyBackground = ApplyBackground
-
-			local CARD_HEIGHT = 68
+			Library._ApplyBackground  = ApplyBackground
+			Library._DisableBackground = DisableBackground
 			local CARD_MARGIN = 8
 			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2
 
@@ -956,8 +998,8 @@ do
 			-- =============================================
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
-			SearchBarFrame.Position = UDim2.new(0, 4, 0, 76)
-			SearchBarFrame.Size = UDim2.new(1, -10, 0, 22)
+			SearchBarFrame.Position = UDim2.new(0, 4, 0, 79)
+			SearchBarFrame.Size = UDim2.new(1, -10, 0, 20)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1322,8 +1364,8 @@ do
 			-- Shifted down 30px to accommodate search bar
 			local Tabs = Instance.new('ScrollingFrame', Sidebar)
 			Tabs.Name = "Tabs"
-			Tabs.Position = UDim2.new(0, 8, 0, 110)
-			Tabs.Size = UDim2.new(1, -16, 1, -(110 + CARD_TOTAL))
+			Tabs.Position = UDim2.new(0, 8, 0, 108)
+			Tabs.Size = UDim2.new(1, -16, 1, -(108 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
@@ -1543,9 +1585,15 @@ do
 			--   window:SetBackground("https://files.catbox.moe/xyz.jpg", 0.2)
 			-- =============================================
 			function Window:SetBackground(imageSource, transparency)
-				task.spawn(function()
-					Library._ApplyBackground(imageSource, transparency)
-				end)
+				if not imageSource or imageSource == "" then
+					task.spawn(function()
+						Library._DisableBackground()
+					end)
+				else
+					task.spawn(function()
+						Library._ApplyBackground(imageSource, transparency)
+					end)
+				end
 			end
 
 			return setmetatable(Window, Library)
