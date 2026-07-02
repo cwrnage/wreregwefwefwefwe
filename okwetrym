@@ -794,6 +794,12 @@ do
 
 			-- These frame names stay fully opaque — their backgrounds are
 			-- the actual visible element UI (toggle track, slider bar, button, textbox input, etc.)
+			-- NOTE: "Inline" was previously kept opaque here, which fully covered the
+			-- background image (it's a sibling of Inline sitting right below it in the
+			-- same Outline, so an opaque Inline blocked it completely). It's removed so
+			-- the background is actually visible through the UI, while individual controls
+			-- (toggles, sliders, dropdowns, textboxes, buttons, etc.) stay solid via their
+			-- own frames listed below.
 			local BG_KEEP_OPAQUE = {
 				ToggleFrame    = true,  -- shared by: toggle pill, button bg, dropdown row, textbox input
 				ToggleAccent   = true,  -- toggle fill color
@@ -811,7 +817,6 @@ do
 				BtnShimmer     = true,  -- button click flash
 				ToggleContent  = true,  -- dropdown option list panel
 				Outline        = true,  -- top-level window border (has the image as child)
-				Inline         = true,  -- immediate child of Outline — keep 1px border look
 			}
 
 			local function EnableBackground(BgImage)
@@ -958,7 +963,7 @@ do
 			local Sidebar = Instance.new('Frame', Inline)
 			Sidebar.Name = "Sidebar"
 			Sidebar.Position = UDim2.new(0,0,0,0)
-			Sidebar.Size = UDim2.new(0,155,1,0)
+			Sidebar.Size = UDim2.new(0,130,1,0)
 			Sidebar.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Sidebar.BorderSizePixel = 0
 			Sidebar.ZIndex = 52
@@ -1000,11 +1005,14 @@ do
 
 			-- =============================================
 			-- NEW: SEARCH BAR (sits between logo divider and tabs)
+			-- Narrower + centered so it doesn't span the full
+			-- sidebar width anymore.
 			-- =============================================
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
-			SearchBarFrame.Position = UDim2.new(0, 4, 0, 79)
-			SearchBarFrame.Size = UDim2.new(1, -10, 0, 20)
+			SearchBarFrame.AnchorPoint = Vector2.new(0.5, 0)
+			SearchBarFrame.Position = UDim2.new(0.5, 0, 0, 79)
+			SearchBarFrame.Size = UDim2.new(1, -34, 0, 18)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1014,8 +1022,8 @@ do
 			SearchStroke.Thickness = 1
 
 			local SearchIcon = Instance.new("ImageLabel", SearchBarFrame)
-			SearchIcon.Size = UDim2.fromOffset(10, 10)
-			SearchIcon.Position = UDim2.new(0, 7, 0.5, 0)
+			SearchIcon.Size = UDim2.fromOffset(9, 9)
+			SearchIcon.Position = UDim2.new(0, 6, 0.5, 0)
 			SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
 			SearchIcon.BackgroundTransparency = 1
 			SearchIcon.Image = "rbxassetid://3926305904"  -- magnifier icon
@@ -1029,13 +1037,13 @@ do
 			SearchBox.PlaceholderColor3 = Color3.fromRGB(60, 60, 60)
 			SearchBox.Text = ""
 			SearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
-			SearchBox.TextSize = 10
+			SearchBox.TextSize = 9
 			SearchBox.TextXAlignment = Enum.TextXAlignment.Left
 			SearchBox.BackgroundTransparency = 1
 			SearchBox.BorderSizePixel = 0
 			SearchBox.ClearTextOnFocus = false
-			SearchBox.Position = UDim2.new(0, 22, 0, 0)
-			SearchBox.Size = UDim2.new(1, -28, 1, 0)
+			SearchBox.Position = UDim2.new(0, 19, 0, 0)
+			SearchBox.Size = UDim2.new(1, -24, 1, 0)
 			SearchBox.ZIndex = 55
 
 			-- Search results overlay (parented to ScreenGUI so it floats above everything)
@@ -1502,8 +1510,8 @@ do
 
 			local Holder = Instance.new('Frame', Inline)
 			Holder.Name = "Holder"
-			Holder.Position = UDim2.new(0,155,0,0)
-			Holder.Size = UDim2.new(1,-155,1,0)
+			Holder.Position = UDim2.new(0,130,0,0)
+			Holder.Size = UDim2.new(1,-130,1,0)
 			Holder.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 			Holder.BorderSizePixel = 0
 			Holder.ZIndex = 52
@@ -1518,7 +1526,7 @@ do
 
 			local SepLine = Instance.new("Frame", Inline)
 			SepLine.Size = UDim2.new(0,1,1,0)
-			SepLine.Position = UDim2.new(0,155,0,0)
+			SepLine.Position = UDim2.new(0,130,0,0)
 			SepLine.BackgroundColor3 = Color3.fromRGB(0,0,0)
 			SepLine.BorderSizePixel = 0
 			SepLine.ZIndex = 53
