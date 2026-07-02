@@ -786,138 +786,6 @@ do
 			end
 
 			-- Internal helper that builds or updates the background ImageLabel
-			-- Snapshot of original transparencies so we can fully restore on disable
-			local _bgSnapshot = {}  -- { [obj] = originalTransparency }
-			local _bgGlowSnapshot = {}  -- { [obj] = { origColor, origStroke or nil } }
-			local _bgDescConn = nil
-			local _bgActive = false
-
-			-- These frame names stay fully opaque — their backgrounds are
-			-- the actual visible element UI (toggle track, slider bar, button, textbox input, etc.)
-			-- NOTE: "Inline" was previously kept opaque here, which fully covered the
-			-- background image (it's a sibling of Inline sitting right below it in the
-			-- same Outline, so an opaque Inline blocked it completely). It's removed so
-			-- the background is actually visible through the UI, while individual controls
-			-- (toggles, sliders, dropdowns, textboxes, buttons, etc.) stay solid via their
-			-- own frames listed below.
-			local BG_KEEP_OPAQUE = {
-				ToggleFrame    = true,  -- shared by: toggle pill, button bg, dropdown row, textbox input
-				ToggleAccent   = true,  -- toggle fill color
-				Circle         = true,  -- toggle knob
-				Fill           = true,  -- slider filled portion
-				FillHold       = true,  -- slider fill container
-				PlayerCard     = true,  -- bottom-of-sidebar player card
-				AvatarFrame    = true,  -- avatar circle inside card
-				ExecutorBadge  = true,  -- executor name pill
-				SearchBarFrame = true,  -- search input bar
-				SearchResults  = true,  -- search results dropdown
-				HoverFill      = true,  -- tab button hover tint
-				ActiveFill     = true,  -- tab button active tint
-				AccentBar      = true,  -- tab left accent stripe
-				BtnShimmer     = true,  -- button click flash
-				ToggleContent  = true,  -- dropdown option list panel
-				Outline        = true,  -- top-level window border (has the image as child)
-			}
-
-			local function EnableBackground(BgImage)
-				_bgActive = true
-				-- Walk tree and snapshot + transparentize everything not in keep list
-				for _, obj in ipairs(Outline:GetDescendants()) do
-					if obj == BgImage then continue end
-					if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
-						_bgSnapshot[obj] = obj.BackgroundTransparency
-						obj.BackgroundTransparency = 1
-						-- disable gradients that repaint solid colours
-						for _, gc in ipairs(obj:GetChildren()) do
-							if gc:IsA("UIGradient") then gc.Enabled = false end
-						end
-					end
-					-- Glow every text object
-					if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-						local existingStroke = obj:FindFirstChildOfClass("UIStroke")
-						local origColor = obj:IsA("TextBox") and nil or obj.TextColor3
-						_bgGlowSnapshot[obj] = { color = origColor, hadStroke = existingStroke ~= nil }
-						if existingStroke then existingStroke:Destroy() end
-						local stroke = Instance.new("UIStroke", obj)
-						stroke.Name        = "_BgGlowStroke"
-						stroke.Color       = Color3.fromRGB(0, 0, 0)
-						stroke.Thickness   = 1.6
-						stroke.Transparency = 0
-						stroke.LineJoinMode = Enum.LineJoinMode.Round
-						-- brighten text
-						if origColor then
-							local h, s, v = origColor:ToHSV()
-							obj.TextColor3 = Color3.fromHSV(h, s, math.min(v + 0.28, 1))
-						end
-					end
-				end
-
-				-- Watch for new descendants (sections/pages added after bg enabled)
-				if _bgDescConn then _bgDescConn:Disconnect() end
-				_bgDescConn = Outline.DescendantAdded:Connect(function(obj)
-					if not _bgActive then return end
-					task.defer(function()
-						if not _bgActive then return end
-						if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
-							_bgSnapshot[obj] = obj.BackgroundTransparency
-							obj.BackgroundTransparency = 1
-							for _, gc in ipairs(obj:GetChildren()) do
-								if gc:IsA("UIGradient") then gc.Enabled = false end
-							end
-						end
-						if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-							local existingStroke = obj:FindFirstChildOfClass("UIStroke")
-							local origColor = obj:IsA("TextBox") and nil or obj.TextColor3
-							_bgGlowSnapshot[obj] = { color = origColor, hadStroke = existingStroke ~= nil }
-							if existingStroke then existingStroke:Destroy() end
-							local stroke = Instance.new("UIStroke", obj)
-							stroke.Name        = "_BgGlowStroke"
-							stroke.Color       = Color3.fromRGB(0, 0, 0)
-							stroke.Thickness   = 1.6
-							stroke.Transparency = 0
-							stroke.LineJoinMode = Enum.LineJoinMode.Round
-							if origColor then
-								local h, s, v = origColor:ToHSV()
-								obj.TextColor3 = Color3.fromHSV(h, s, math.min(v + 0.28, 1))
-							end
-						end
-					end)
-				end)
-			end
-
-			local function DisableBackground()
-				_bgActive = false
-				if _bgDescConn then _bgDescConn:Disconnect(); _bgDescConn = nil end
-				-- Hide image
-				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
-					Library.BackgroundImageLabel.Image = ""
-					Library.BackgroundImageLabel.Visible = false
-				end
-				-- Restore all frame transparencies
-				for obj, origTrans in pairs(_bgSnapshot) do
-					if obj and obj.Parent then
-						obj.BackgroundTransparency = origTrans
-						for _, gc in ipairs(obj:GetChildren()) do
-							if gc:IsA("UIGradient") then gc.Enabled = true end
-						end
-					end
-				end
-				_bgSnapshot = {}
-				-- Restore all text glow
-				for obj, snap in pairs(_bgGlowSnapshot) do
-					if obj and obj.Parent then
-						-- Remove the glow stroke we added
-						local stroke = obj:FindFirstChild("_BgGlowStroke")
-						if stroke then stroke:Destroy() end
-						-- Restore original text colour
-						if snap.color and (obj:IsA("TextLabel") or obj:IsA("TextButton")) then
-							obj.TextColor3 = snap.color
-						end
-					end
-				end
-				_bgGlowSnapshot = {}
-			end
-
 			local function ApplyBackground(imgSrc, transparency)
 				local resolved = ResolveImageSource(imgSrc or "")
 				local trans = transparency or 0.35
@@ -927,14 +795,16 @@ do
 					return
 				end
 
+				print("[UI Background] Applying image: " .. resolved)
+
 				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
 					Library.BackgroundImageLabel.Image = resolved
 					Library.BackgroundImageLabel.ImageTransparency = trans
-					Library.BackgroundImageLabel.Visible = true
-					if not _bgActive then
-						EnableBackground(Library.BackgroundImageLabel)
-					end
 				else
+					-- Place image inside Outline at the lowest ZIndex so it sits
+					-- behind all UI chrome. Then walk the entire UI tree and make
+					-- every Frame/ScrollingFrame transparent so the image bleeds
+					-- through sections, tabs, sidebar, holder — everything.
 					local BgImage = Instance.new("ImageLabel", Outline)
 					BgImage.Name = "BackgroundImage"
 					BgImage.Image = resolved
@@ -946,24 +816,73 @@ do
 					BgImage.ZIndex = 1
 					BgImage.BorderSizePixel = 0
 					Library.BackgroundImageLabel = BgImage
-					EnableBackground(BgImage)
+
+					-- Frames to skip making transparent (they are decorative
+					-- and should keep some opacity for contrast)
+					local KEEP_OPAQUE = {
+						-- toggle/slider pill backgrounds need to stay visible
+						ToggleFrame = true,
+						FillHold = true,
+						Circle = true,
+					}
+
+					-- Walk the whole Outline tree and strip backgrounds off
+					-- every Frame/ScrollingFrame except ones we want to keep.
+					local function StripBackgrounds(root)
+						for _, obj in ipairs(root:GetDescendants()) do
+							if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+								local n = obj.Name
+								-- Keep toggle/slider pill UI readable
+								if n == "NewToggle" or n == "FillHold" or n == "Fill" then
+									-- leave them
+								else
+									obj.BackgroundTransparency = 1
+								end
+								-- Disable gradients so they don't repaint backgrounds
+								for _, gc in ipairs(obj:GetChildren()) do
+									if gc:IsA("UIGradient") then gc.Enabled = false end
+								end
+							end
+						end
+					end
+
+					-- Run immediately for already-created children
+					StripBackgrounds(Outline)
+
+					-- Also hook new descendants so pages/sections added later are covered
+					Outline.DescendantAdded:Connect(function(obj)
+						if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+							if obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+								local n = obj.Name
+								if n ~= "NewToggle" and n ~= "FillHold" and n ~= "Fill" then
+									obj.BackgroundTransparency = 1
+								end
+								for _, gc in ipairs(obj:GetChildren()) do
+									if gc:IsA("UIGradient") then gc.Enabled = false end
+								end
+							end
+						end
+					end)
 				end
 			end
 
-			Library._ApplyBackground  = ApplyBackground
-			Library._DisableBackground = DisableBackground
+			-- Apply at creation time if a source was passed
+			if Properties.BackgroundImage then
+				task.spawn(function()
+					ApplyBackground(Properties.BackgroundImage, Properties.BackgroundTransparency)
+				end)
+			end
 
-			-- === FIX: CARD_HEIGHT was previously undefined here, causing
-			-- "attempt to perform arithmetic (add) on nil and number"
-			-- when CARD_TOTAL was computed below. Declared explicitly now.
-			local CARD_HEIGHT = 58
+			Library._ApplyBackground = ApplyBackground
+
+			local CARD_HEIGHT = 68
 			local CARD_MARGIN = 8
 			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2
 
 			local Sidebar = Instance.new('Frame', Inline)
 			Sidebar.Name = "Sidebar"
 			Sidebar.Position = UDim2.new(0,0,0,0)
-			Sidebar.Size = UDim2.new(0,130,1,0)
+			Sidebar.Size = UDim2.new(0,155,1,0)
 			Sidebar.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Sidebar.BorderSizePixel = 0
 			Sidebar.ZIndex = 52
@@ -1005,14 +924,11 @@ do
 
 			-- =============================================
 			-- NEW: SEARCH BAR (sits between logo divider and tabs)
-			-- Narrower + centered so it doesn't span the full
-			-- sidebar width anymore.
 			-- =============================================
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
-			SearchBarFrame.AnchorPoint = Vector2.new(0.5, 0)
-			SearchBarFrame.Position = UDim2.new(0.5, 0, 0, 79)
-			SearchBarFrame.Size = UDim2.new(1, -34, 0, 18)
+			SearchBarFrame.Position = UDim2.new(0, 4, 0, 76)
+			SearchBarFrame.Size = UDim2.new(1, -10, 0, 22)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1022,8 +938,8 @@ do
 			SearchStroke.Thickness = 1
 
 			local SearchIcon = Instance.new("ImageLabel", SearchBarFrame)
-			SearchIcon.Size = UDim2.fromOffset(9, 9)
-			SearchIcon.Position = UDim2.new(0, 6, 0.5, 0)
+			SearchIcon.Size = UDim2.fromOffset(10, 10)
+			SearchIcon.Position = UDim2.new(0, 7, 0.5, 0)
 			SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
 			SearchIcon.BackgroundTransparency = 1
 			SearchIcon.Image = "rbxassetid://3926305904"  -- magnifier icon
@@ -1037,13 +953,13 @@ do
 			SearchBox.PlaceholderColor3 = Color3.fromRGB(60, 60, 60)
 			SearchBox.Text = ""
 			SearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
-			SearchBox.TextSize = 9
+			SearchBox.TextSize = 10
 			SearchBox.TextXAlignment = Enum.TextXAlignment.Left
 			SearchBox.BackgroundTransparency = 1
 			SearchBox.BorderSizePixel = 0
 			SearchBox.ClearTextOnFocus = false
-			SearchBox.Position = UDim2.new(0, 19, 0, 0)
-			SearchBox.Size = UDim2.new(1, -24, 1, 0)
+			SearchBox.Position = UDim2.new(0, 22, 0, 0)
+			SearchBox.Size = UDim2.new(1, -28, 1, 0)
 			SearchBox.ZIndex = 55
 
 			-- Search results overlay (parented to ScreenGUI so it floats above everything)
@@ -1051,7 +967,7 @@ do
 			SearchResults.Name = "SearchResults"
 			SearchResults.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
 			SearchResults.BorderSizePixel = 0
-			SearchResults.Size = UDim2.fromOffset(170, 0)
+			SearchResults.Size = UDim2.fromOffset(220, 0)
 			SearchResults.AutomaticSize = Enum.AutomaticSize.None
 			SearchResults.Visible = false
 			SearchResults.ZIndex = 200
@@ -1306,7 +1222,7 @@ do
 
 				if #results == 0 then
 					-- Show "no results" row
-					SearchResults.Size = UDim2.fromOffset(170, 44)
+					SearchResults.Size = UDim2.fromOffset(220, 44)
 					PositionSearchResults()
 					SearchResults.Visible = true
 					local NoRow = Instance.new("Frame", SearchScroll)
@@ -1328,7 +1244,7 @@ do
 				local gap = 3
 				local pad = 10
 				local maxRows = math.min(#results, 5)
-				SearchResults.Size = UDim2.fromOffset(170, maxRows * (rowH + gap) + pad)
+				SearchResults.Size = UDim2.fromOffset(220, maxRows * (rowH + gap) + pad)
 
 				PositionSearchResults()
 				SearchResults.Visible = true
@@ -1377,8 +1293,8 @@ do
 			-- Shifted down 30px to accommodate search bar
 			local Tabs = Instance.new('ScrollingFrame', Sidebar)
 			Tabs.Name = "Tabs"
-			Tabs.Position = UDim2.new(0, 8, 0, 108)
-			Tabs.Size = UDim2.new(1, -16, 1, -(108 + CARD_TOTAL))
+			Tabs.Position = UDim2.new(0, 8, 0, 110)
+			Tabs.Size = UDim2.new(1, -16, 1, -(110 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
@@ -1510,8 +1426,8 @@ do
 
 			local Holder = Instance.new('Frame', Inline)
 			Holder.Name = "Holder"
-			Holder.Position = UDim2.new(0,130,0,0)
-			Holder.Size = UDim2.new(1,-130,1,0)
+			Holder.Position = UDim2.new(0,155,0,0)
+			Holder.Size = UDim2.new(1,-155,1,0)
 			Holder.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 			Holder.BorderSizePixel = 0
 			Holder.ZIndex = 52
@@ -1526,7 +1442,7 @@ do
 
 			local SepLine = Instance.new("Frame", Inline)
 			SepLine.Size = UDim2.new(0,1,1,0)
-			SepLine.Position = UDim2.new(0,130,0,0)
+			SepLine.Position = UDim2.new(0,155,0,0)
 			SepLine.BackgroundColor3 = Color3.fromRGB(0,0,0)
 			SepLine.BorderSizePixel = 0
 			SepLine.ZIndex = 53
@@ -1598,15 +1514,9 @@ do
 			--   window:SetBackground("https://files.catbox.moe/xyz.jpg", 0.2)
 			-- =============================================
 			function Window:SetBackground(imageSource, transparency)
-				if not imageSource or imageSource == "" then
-					task.spawn(function()
-						Library._DisableBackground()
-					end)
-				else
-					task.spawn(function()
-						Library._ApplyBackground(imageSource, transparency)
-					end)
-				end
+				task.spawn(function()
+					Library._ApplyBackground(imageSource, transparency)
+				end)
 			end
 
 			return setmetatable(Window, Library)
@@ -1717,8 +1627,8 @@ do
 			end)
 
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
-			NewPage.Position = UDim2.new(0, 4, 0, 8)
-			NewPage.Size = UDim2.new(1, -12, 1, -16)
+			NewPage.Position = UDim2.new(0, 8, 0, 8)
+			NewPage.Size = UDim2.new(1, -16, 1, -16)
 			NewPage.BackgroundTransparency = 1
 			NewPage.Visible = false
 			NewPage.ZIndex = 53
@@ -1736,12 +1646,12 @@ do
 			end
 
 			Left.Name = "Left"
-			Left.Size = UDim2.new(0.5, -4, 1, 0)
+			Left.Size = UDim2.new(0.5, -3, 1, 0)
 			Left.Position = UDim2.new(0, 0, 0, 0)
 
 			Right.Name = "Right"
-			Right.Size = UDim2.new(0.5, -4, 1, 0)
-			Right.Position = UDim2.new(0.5, 4, 0, 0)
+			Right.Size = UDim2.new(0.5, -3, 1, 0)
+			Right.Position = UDim2.new(0.5, 3, 0, 0)
 
 			local function SetupColumn(column)
 				local layout = Instance.new("UIListLayout", column)
@@ -1919,16 +1829,16 @@ do
 			Divider.ZIndex = 56
 
 			local Content = Instance.new("Frame", Frame)
-			Content.Position = UDim2.new(0, 8, 0, 36)
+			Content.Position = UDim2.new(0, 10, 0, 36)
 			Content.BackgroundTransparency = 1
 			Content.BorderSizePixel = 0
 			Content.ZIndex = 56
 
 			if isAuto then
-				Content.Size = UDim2.new(1, -16, 0, 0)
+				Content.Size = UDim2.new(1, -20, 0, 0)
 				Content.AutomaticSize = Enum.AutomaticSize.Y
 			else
-				Content.Size = UDim2.new(1, -16, 1, -44)
+				Content.Size = UDim2.new(1, -20, 1, -44)
 				Content.AutomaticSize = Enum.AutomaticSize.None
 			end
 
@@ -1938,7 +1848,6 @@ do
 
 			local BottomPad = Instance.new("UIPadding", Content)
 			BottomPad.PaddingBottom = UDim.new(0, 8)
-			BottomPad.PaddingRight = UDim.new(0, 2)
 
 			Section.Elements.SectionContent = Content
 			Section.Page.Sections[#Section.Page.Sections + 1] = Section
