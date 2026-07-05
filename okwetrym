@@ -710,7 +710,22 @@ do
 				if ext ~= "png" and ext ~= "jpg" and ext ~= "jpeg" and ext ~= "gif" and ext ~= "webp" then
 					ext = "png"
 				end
-				local localPath = "UIBackground_cache." .. ext
+
+				-- IMPORTANT: give every distinct URL its own filename.
+				-- getcustomasset caches by file PATH, not file content — if
+				-- every image reused the same "UIBackground_cache.<ext>"
+				-- path, switching images would overwrite the file but the
+				-- executor would hand back the SAME cached asset it gave
+				-- last time, so the picture never visually changed.
+				local hash = 5381
+				for i = 1, #src do
+					hash = (hash * 33 + string.byte(src, i)) % 2147483647
+				end
+				local localPath = "UIBackground_" .. tostring(hash) .. "." .. ext
+
+				-- Delete any stale file at that path first, just in case
+				-- the executor's cache also keys off of write timestamps.
+				pcall(function() if isfile and isfile(localPath) then delfile(localPath) end end)
 
 				local dlOk, dlResult = pcall(function()
 					return game:HttpGet(src)
@@ -1669,8 +1684,8 @@ do
 			end)
 
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
-			NewPage.Position = UDim2.new(0, 4, 0, 8)
-			NewPage.Size = UDim2.new(1, -12, 1, -16)
+			NewPage.Position = UDim2.new(0, 0, 0, 8)
+			NewPage.Size = UDim2.new(1, -8, 1, -16)
 			NewPage.BackgroundTransparency = 1
 			NewPage.Visible = false
 			NewPage.ZIndex = 53
