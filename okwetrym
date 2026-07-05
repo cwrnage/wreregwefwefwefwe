@@ -1714,6 +1714,16 @@ do
 				local layout = Instance.new("UIListLayout", column)
 				layout.SortOrder = Enum.SortOrder.LayoutOrder
 				layout.Padding = UDim.new(0, 8)
+
+				-- Give Section boxes a couple pixels of breathing room on
+				-- BOTH sides — a ScrollingFrame always clips exactly at its
+				-- own edge, and Section frames previously filled 100% of
+				-- the column's width with zero margin, so their border
+				-- stroke had nowhere to render without getting clipped.
+				local pad = Instance.new("UIPadding", column)
+				pad.PaddingLeft = UDim.new(0, 2)
+				pad.PaddingRight = UDim.new(0, 2)
+
 				local function UpdateCanvas()
 					column.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
 				end
