@@ -941,8 +941,8 @@ do
 
 			local SidebarClip = Instance.new("Frame", Sidebar)
 			SidebarClip.Name = "SidebarClip"
-			SidebarClip.Position = UDim2.new(1,-10,0,0)
-			SidebarClip.Size = UDim2.new(0,10,1,0)
+			SidebarClip.Position = UDim2.new(1,-2,0,0)
+			SidebarClip.Size = UDim2.new(0,2,1,0)
 			SidebarClip.BackgroundColor3 = Color3.fromRGB(10,10,10)
 			SidebarClip.BorderSizePixel = 0
 			SidebarClip.ZIndex = 52
@@ -979,7 +979,7 @@ do
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
 			SearchBarFrame.Position = UDim2.new(0, 4, 0, 79)
-			SearchBarFrame.Size = UDim2.new(1, -16, 0, 20)
+			SearchBarFrame.Size = UDim2.new(1, -6, 0, 20)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1345,7 +1345,7 @@ do
 			local Tabs = Instance.new('ScrollingFrame', Sidebar)
 			Tabs.Name = "Tabs"
 			Tabs.Position = UDim2.new(0, 4, 0, 108)
-			Tabs.Size = UDim2.new(1, -16, 1, -(108 + CARD_TOTAL))
+			Tabs.Size = UDim2.new(1, -6, 1, -(108 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
@@ -1685,7 +1685,7 @@ do
 
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
 			NewPage.Position = UDim2.new(0, 0, 0, 8)
-			NewPage.Size = UDim2.new(1, -8, 1, -16)
+			NewPage.Size = UDim2.new(1, -11, 1, -16)
 			NewPage.BackgroundTransparency = 1
 			NewPage.Visible = false
 			NewPage.ZIndex = 53
