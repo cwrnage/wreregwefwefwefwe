@@ -78,10 +78,6 @@ do
 
 		-- NEW: Addon registry
 		Addons = {};
-
-		-- NEW: every Section box's root Frame gets registered here so a
-		-- background image can be applied to ONLY these, nothing else.
-		SectionFrames = {};
 	}
 
 	-- // Ignores
@@ -682,9 +678,6 @@ do
 		--   window:SetBackground("https://i.imgur.com/xyz.jpg")
 		--   window:SetBackground()  -- clears it
 		-- =============================================
-		local _bgImageSource = nil
-		local _bgTransparency = 0.35
-		local _bgActive = false
 
 		-- Resolves rbxassetid://, rbxthumb://, or any http(s) URL
 		-- (downloads + getcustomasset, since executors can't load
@@ -742,91 +735,9 @@ do
 			return src
 		end
 
-		-- Positions a Section's background image as a "window" into one
-		-- shared canvas the size of the whole content area, so the image
-		-- lines up seamlessly across every section instead of each one
-		-- getting its own independently-stretched copy.
-		local function PositionSectionImage(Frame, img)
-			local holder = Library._ContentHolder
-			if not holder or not holder.Parent or not Frame or not Frame.Parent then return end
-			local holderPos  = holder.AbsolutePosition
-			local holderSize = holder.AbsoluteSize
-			local framePos   = Frame.AbsolutePosition
-			img.Size = UDim2.fromOffset(holderSize.X, holderSize.Y)
-			img.Position = UDim2.fromOffset(-(framePos.X - holderPos.X), -(framePos.Y - holderPos.Y))
-		end
-
-		-- Adds/updates/removes the background image on a single Section
-		-- frame only. Never touches anything outside that frame.
-		local function ApplySectionImage(Frame)
-			if not Frame or not Frame.Parent then return end
-			local img = Frame:FindFirstChild("_SectionBgImage")
-
-			if _bgActive and _bgImageSource then
-				if not img then
-					img = Instance.new("ImageLabel")
-					img.Name = "_SectionBgImage"
-					img.BackgroundTransparency = 1
-					img.BorderSizePixel = 0
-					img.ScaleType = Enum.ScaleType.Crop
-					img.ZIndex = Frame.ZIndex -- sits behind HeaderRow/Divider/Content
-					img.Parent = Frame
-
-					-- Clip so only this section's "window" into the shared
-					-- canvas is visible — otherwise the full-size image would
-					-- spill out over the rest of the UI.
-					Frame.ClipsDescendants = true
-
-					-- Keep it aligned as the section scrolls or the window moves.
-					Frame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
-						PositionSectionImage(Frame, img)
-					end)
-				end
-				img.Image = _bgImageSource
-				img.ImageTransparency = _bgTransparency
-				img.Visible = true
-				PositionSectionImage(Frame, img)
-				-- Translucent dark overlay (not fully clear) so text, toggles,
-				-- sliders, etc. inside the section stay easy to read over the image.
-				Frame.BackgroundTransparency = 0.55
-			else
-				if img then
-					img.Visible = false
-				end
-				-- Restore the section's original semi-dark panel look.
-				Frame.BackgroundTransparency = 0.3
-			end
-		end
-
-		local function RefreshAllSectionImages()
-			for _, frame in ipairs(Library.SectionFrames) do
-				ApplySectionImage(frame)
-			end
-		end
-
-		local function ApplyBackground(imgSrc, transparency)
-			local resolved = ResolveImageSource(imgSrc or "")
-			if resolved == "" then
-				warn("[UI Background] Could not resolve image source: " .. tostring(imgSrc))
-				return
-			end
-			_bgImageSource = resolved
-			-- Nudge the image a bit more transparent than requested — keeps
-			-- text, toggles, sliders, etc. as the clear visual focus even if
-			-- a very solid value was passed in.
-			local requested = transparency or 0.35
-			_bgTransparency = math.clamp(requested + 0.15, 0, 0.92)
-			_bgActive = true
-			RefreshAllSectionImages()
-		end
-
-		local function DisableBackground()
-			_bgActive = false
-			_bgImageSource = nil
-			RefreshAllSectionImages()
-		end
-
-		function Library:New(Properties)
+		-- Background image machinery (EnableBackground/DisableBackground/
+		-- ApplyBackground) lives inside Library:New(), right after Inline
+		-- is created, since it needs a closure over that window's Outline.
 			if not Properties then
 				Properties = {}
 			end
@@ -871,8 +782,122 @@ do
 			Inline.ZIndex = 51
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 0)
 
-			-- Background image is applied per-Section only — see
-			-- ApplyBackground/DisableBackground defined above New().
+			-- =============================================
+			-- BACKGROUND IMAGE — one single image behind the whole
+			-- window (parented to Outline), revealed only where it's
+			-- allowed to show through: Sections and the tab sidebar.
+			-- Toggles, sliders, lists, dropdowns, textboxes, buttons,
+			-- the player card, and the search bar all stay fully opaque.
+			-- =============================================
+			local _bgSnapshot = {}
+			local _bgActive = false
+
+			-- Frame names that must ALWAYS stay opaque — this is what
+			-- keeps the image off of every interactive element.
+			local BG_KEEP_OPAQUE = {
+				ToggleFrame    = true,  -- toggle pill / slider bar / dropdown box / button bg / textbox input (shared name)
+				ToggleAccent   = true,  -- toggle fill color
+				Circle         = true,  -- toggle knob
+				Fill           = true,  -- slider filled portion
+				FillHold       = true,  -- slider fill container
+				PlayerCard     = true,  -- bottom-of-sidebar player card
+				AvatarFrame    = true,  -- avatar circle inside card
+				ExecutorBadge  = true,  -- executor name pill
+				SearchBarFrame = true,  -- search input bar
+				SearchResults  = true,  -- search results dropdown
+				HoverFill      = true,  -- tab button hover tint
+				ActiveFill     = true,  -- tab button active tint
+				AccentBar      = true,  -- tab left accent stripe
+				BtnShimmer     = true,  -- button click flash
+				ToggleContent  = true,  -- dropdown/list open option panel
+				Outline        = true,  -- top-level window border (has the image as a child)
+				-- Inline is NOT kept opaque — it covers nearly the whole
+				-- window, so keeping it solid hides the image behind
+				-- everything. Letting it go transparent is what lets
+				-- Sections/Sidebar show the image at all.
+			}
+
+			local function EnableBackground(BgImage)
+				_bgActive = true
+				for _, obj in ipairs(Outline:GetDescendants()) do
+					if obj == BgImage then continue end
+					if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+						_bgSnapshot[obj] = obj.BackgroundTransparency
+						obj.BackgroundTransparency = 1
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = false end
+						end
+					end
+				end
+
+				if Library._bgDescConn then Library._bgDescConn:Disconnect() end
+				Library._bgDescConn = Outline.DescendantAdded:Connect(function(obj)
+					if not _bgActive then return end
+					task.defer(function()
+						if not _bgActive then return end
+						if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+							_bgSnapshot[obj] = obj.BackgroundTransparency
+							obj.BackgroundTransparency = 1
+							for _, gc in ipairs(obj:GetChildren()) do
+								if gc:IsA("UIGradient") then gc.Enabled = false end
+							end
+						end
+					end)
+				end)
+			end
+
+			local function DisableBackground()
+				_bgActive = false
+				if Library._bgDescConn then Library._bgDescConn:Disconnect(); Library._bgDescConn = nil end
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					Library.BackgroundImageLabel.Image = ""
+					Library.BackgroundImageLabel.Visible = false
+				end
+				for obj, origTrans in pairs(_bgSnapshot) do
+					if obj and obj.Parent then
+						obj.BackgroundTransparency = origTrans
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = true end
+						end
+					end
+				end
+				_bgSnapshot = {}
+			end
+
+			local function ApplyBackground(imgSrc, transparency)
+				local resolved = ResolveImageSource(imgSrc or "")
+				if resolved == "" then
+					warn("[UI Background] Could not resolve image source: " .. tostring(imgSrc))
+					return
+				end
+				-- Same dimming behavior as before: nudge a bit more
+				-- transparent than requested so text/UI stays legible.
+				local requested = transparency or 0.35
+				local trans = math.clamp(requested + 0.15, 0, 0.92)
+
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					Library.BackgroundImageLabel.Image = resolved
+					Library.BackgroundImageLabel.ImageTransparency = trans
+					Library.BackgroundImageLabel.Visible = true
+					if not _bgActive then
+						EnableBackground(Library.BackgroundImageLabel)
+					end
+				else
+					local BgImage = Instance.new("ImageLabel", Outline)
+					BgImage.Name = "BackgroundImage"
+					BgImage.Image = resolved
+					BgImage.ScaleType = Enum.ScaleType.Crop
+					BgImage.Size = UDim2.new(1, 0, 1, 0)
+					BgImage.Position = UDim2.new(0, 0, 0, 0)
+					BgImage.BackgroundTransparency = 1
+					BgImage.ImageTransparency = trans
+					BgImage.ZIndex = 1
+					BgImage.BorderSizePixel = 0
+					Library.BackgroundImageLabel = BgImage
+					EnableBackground(BgImage)
+				end
+			end
+
 			Library._ApplyBackground  = ApplyBackground
 			Library._DisableBackground = DisableBackground
 
@@ -1437,11 +1462,6 @@ do
 			Holder.ZIndex = 52
 			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 10)
 
-			-- Reference used so every Section's background image is a "window"
-			-- into ONE shared canvas the size of the content area, instead of
-			-- each section getting its own independently-scaled copy.
-			Library._ContentHolder = Holder
-
 			local HolderGrad = Instance.new("UIGradient", Holder)
 			HolderGrad.Color = ColorSequence.new({
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(16,16,16)),
@@ -1867,11 +1887,6 @@ do
 
 			Section.Elements.SectionContent = Content
 			Section.Page.Sections[#Section.Page.Sections + 1] = Section
-
-			-- Track this Section's root Frame so a background image
-			-- (if/when set) applies to it, and to it only.
-			table.insert(Library.SectionFrames, Frame)
-			ApplySectionImage(Frame)
 
 			return setmetatable(Section, Library.Sections)
 		end
