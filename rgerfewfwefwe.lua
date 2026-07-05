@@ -72,6 +72,12 @@ do
 		VisValues = {};
 		UIKey = Enum.KeyCode.Insert;
 		Notifs = {};
+
+		-- NEW: Search index for all registered UI elements
+		SearchIndex = {};
+
+		-- NEW: Addon registry
+		Addons = {};
 	}
 
 	-- // Ignores
@@ -86,6 +92,33 @@ do
 	local Mouse = LocalPlayer:GetMouse();
 	local Players = game:GetService("Players")
 	local TweenService = game:GetService("TweenService")
+
+	-- // =============================================
+	-- // ADDON SYSTEM
+	-- // =============================================
+	--[[
+		ADDON API:
+		Register an addon (do this in your addon script):
+			Library:RegisterAddon("MyAddon", function(window)
+				local page = window:Page({ Name = "My Addon", Icon = "rbxassetid://..." })
+				local section = page:Section({ Name = "Settings", Side = "left" })
+				section:Toggle({ Name = "My Feature", Callback = function(v) end })
+			end)
+
+		Load an addon by name (call after creating your window):
+			window:LoadAddon("MyAddon")
+
+		Or load all registered addons at once:
+			window:LoadAllAddons()
+
+		Addon authors can also use Library.Flags to read/write any flag,
+		and Library.SearchIndex is updated automatically for any elements they add.
+	]]
+	function Library:RegisterAddon(name, callback)
+		Library.Addons[name] = callback
+	end
+
+	-- LoadAddon / LoadAllAddons are added to the window object inside Library:New()
 
 	-- // Misc Functions
 	do
@@ -223,6 +256,22 @@ do
 			return false;
 		end;
 
+		-- Works the same as the per-window Window:SetBackground, but callable
+		-- directly on the Library/module table — matching how ChangeAccent,
+		-- Notification, GetConfig, and LoadConfig are already called as
+		-- "library:MethodName(...)" in most scripts.
+		function Library:SetBackground(imageSource, transparency)
+			if not imageSource or imageSource == "" then
+				task.spawn(function()
+					if Library._DisableBackground then Library._DisableBackground() end
+				end)
+			else
+				task.spawn(function()
+					if Library._ApplyBackground then Library._ApplyBackground(imageSource, transparency) end
+				end)
+			end
+		end
+
 		function MakeDraggable(Instance)
 			local Dragging
 			local DragInput
@@ -306,6 +355,7 @@ do
 			end)
 
 			local ColorpickerFrame = Instance.new("TextButton")
+			ColorpickerFrame.Name = "ColorpickerFrame"
 			ColorpickerFrame.BackgroundColor3 = default
 			ColorpickerFrame.BorderSizePixel = 0
 			if count == 1 then
@@ -323,6 +373,7 @@ do
 			Stroke.Color = Color3.fromRGB(50, 50, 50)
 
 			local Colorpicker = Instance.new("TextButton")
+			Colorpicker.Name = "ColorpickerPopup"
 			Colorpicker.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 			Colorpicker.BorderSizePixel = 0
 			Colorpicker.Size = UDim2.new(0, 185, 0, 190)
@@ -367,6 +418,7 @@ do
 			Instance.new("UICorner", HueBar).CornerRadius = UDim.new(1, 0)
 
 			local HueSlider = Instance.new("Frame")
+			HueSlider.Name = "HueSlider"
 			HueSlider.Size = UDim2.new(0, 14, 0, 14)
 			HueSlider.AnchorPoint = Vector2.new(0, 0.5)
 			HueSlider.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -606,6 +658,104 @@ do
 		local Pages = Library.Pages;
 		local Sections = Library.Sections;
 
+		-- Stamps a dark outline stroke on any TextLabel/TextButton
+		-- so text stays legible over any background image.
+		local function AddTextStroke(label, thickness, transparency)
+			local s = Instance.new("UIStroke", label)
+			s.Color = Color3.fromRGB(0, 0, 0)
+			s.Thickness = thickness or 1.2
+			s.Transparency = transparency or 0.1
+			s.LineJoinMode = Enum.LineJoinMode.Round
+			return s
+		end
+
+		-- =============================================
+		-- SECTION-ONLY BACKGROUND IMAGE
+		-- Applies ONLY to Section boxes (the frames created by
+		-- Pages:Section). Sidebar, tabs, toggles, sliders, lists,
+		-- dropdowns, textboxes, buttons, player card, search bar —
+		-- none of that is touched, ever.
+		--
+		-- Usage:
+		--   window:SetBackground("rbxassetid://12345678", 0.3)
+		--   window:SetBackground("https://i.imgur.com/xyz.jpg")
+		--   window:SetBackground()  -- clears it
+		-- =============================================
+
+		-- Resolves rbxassetid://, rbxthumb://, or any http(s) URL
+		-- (downloads + getcustomasset, since executors can't load
+		-- remote URLs directly into ImageLabel.Image).
+		local function ResolveImageSource(src)
+			if type(src) ~= "string" or src == "" then return "" end
+
+			if src:sub(1, 13) == "rbxassetid://"
+			or src:sub(1, 11) == "rbxthumb://"
+			or src:sub(1, 12) == "rbxgameasset"
+			or src:sub(1, 7)  == "rbxhttp" then
+				return src
+			end
+
+			if src:sub(1, 4) == "http" then
+				if not writefile or not getcustomasset then
+					if not writefile then
+						warn("[UI Background] writefile is not available in this executor. Cannot load external image URLs.")
+					end
+					if not getcustomasset then
+						warn("[UI Background] getcustomasset is not available in this executor. Cannot load external image URLs. Use rbxassetid:// instead.")
+					end
+					return ""
+				end
+
+				local ext = src:match("%.(%a+)%??") or "png"
+				if ext ~= "png" and ext ~= "jpg" and ext ~= "jpeg" and ext ~= "gif" and ext ~= "webp" then
+					ext = "png"
+				end
+
+				-- IMPORTANT: give every distinct URL its own filename.
+				-- getcustomasset caches by file PATH, not file content — if
+				-- every image reused the same "UIBackground_cache.<ext>"
+				-- path, switching images would overwrite the file but the
+				-- executor would hand back the SAME cached asset it gave
+				-- last time, so the picture never visually changed.
+				local hash = 5381
+				for i = 1, #src do
+					hash = (hash * 33 + string.byte(src, i)) % 2147483647
+				end
+				local localPath = "UIBackground_" .. tostring(hash) .. "." .. ext
+
+				-- Delete any stale file at that path first, just in case
+				-- the executor's cache also keys off of write timestamps.
+				pcall(function() if isfile and isfile(localPath) then delfile(localPath) end end)
+
+				local dlOk, dlResult = pcall(function()
+					return game:HttpGet(src)
+				end)
+				if not dlOk or not dlResult or dlResult == "" then
+					warn("[UI Background] Failed to download image from: " .. src .. "\nReason: " .. tostring(dlResult))
+					return ""
+				end
+
+				local writeOk, writeErr = pcall(writefile, localPath, dlResult)
+				if not writeOk then
+					warn("[UI Background] Failed to write image to disk.\nReason: " .. tostring(writeErr))
+					return ""
+				end
+
+				local assetOk, assetResult = pcall(getcustomasset, localPath)
+				if not assetOk or not assetResult or assetResult == "" then
+					warn("[UI Background] getcustomasset failed for local file: " .. localPath .. "\nReason: " .. tostring(assetResult))
+					return ""
+				end
+
+				return assetResult
+			end
+
+			return src
+		end
+
+		-- Background image machinery (EnableBackground/DisableBackground/
+		-- ApplyBackground) lives inside Library:New(), right after Inline
+		-- is created, since it needs a closure over that window's Outline.
 		function Library:New(Properties)
 			if not Properties then
 				Properties = {}
@@ -651,7 +801,132 @@ do
 			Inline.ZIndex = 51
 			Instance.new('UICorner', Inline).CornerRadius = UDim.new(0, 0)
 
-			local CARD_HEIGHT = 68
+			-- =============================================
+			-- BACKGROUND IMAGE — one single image behind the whole
+			-- window (parented to Outline), revealed only where it's
+			-- allowed to show through: Sections and the tab sidebar.
+			-- Toggles, sliders, lists, dropdowns, textboxes, buttons,
+			-- the player card, and the search bar all stay fully opaque.
+			-- =============================================
+			local _bgSnapshot = {}
+			local _bgActive = false
+
+			-- Frame names that must ALWAYS stay opaque — this is what
+			-- keeps the image off of every interactive element.
+			local BG_KEEP_OPAQUE = {
+				ToggleFrame    = true,  -- toggle pill / slider bar / dropdown box / button bg / textbox input (shared name)
+				ToggleAccent   = true,  -- toggle fill color
+				Circle         = true,  -- toggle knob
+				Fill           = true,  -- slider filled portion
+				FillHold       = true,  -- slider fill container
+				PlayerCard     = true,  -- bottom-of-sidebar player card
+				AvatarFrame    = true,  -- avatar circle inside card
+				ExecutorBadge  = true,  -- executor name pill
+				SearchBarFrame = true,  -- search input bar
+				SearchResults  = true,  -- search results dropdown
+				HoverFill      = true,  -- tab button hover tint
+				ActiveFill     = true,  -- tab button active tint
+				AccentBar      = true,  -- tab left accent stripe
+				BtnShimmer     = true,  -- button click flash
+				ToggleContent  = true,  -- dropdown/list open option panel
+				ColorpickerFrame = true, -- colorpicker swatch
+				ColorpickerPopup = true, -- colorpicker's open hue/sat panel
+				HueSlider      = true,  -- colorpicker's hue-bar knob
+				Outline        = true,  -- top-level window border (has the image as a child)
+				-- Inline is NOT kept opaque — it covers nearly the whole
+				-- window, so keeping it solid hides the image behind
+				-- everything. Letting it go transparent is what lets
+				-- Sections/Sidebar show the image at all.
+			}
+
+			local function EnableBackground(BgImage)
+				_bgActive = true
+				for _, obj in ipairs(Outline:GetDescendants()) do
+					if obj == BgImage then continue end
+					if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+						_bgSnapshot[obj] = obj.BackgroundTransparency
+						obj.BackgroundTransparency = 1
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = false end
+						end
+					end
+				end
+
+				if Library._bgDescConn then Library._bgDescConn:Disconnect() end
+				Library._bgDescConn = Outline.DescendantAdded:Connect(function(obj)
+					if not _bgActive then return end
+					task.defer(function()
+						if not _bgActive then return end
+						if (obj:IsA("Frame") or obj:IsA("ScrollingFrame")) and not BG_KEEP_OPAQUE[obj.Name] then
+							_bgSnapshot[obj] = obj.BackgroundTransparency
+							obj.BackgroundTransparency = 1
+							for _, gc in ipairs(obj:GetChildren()) do
+								if gc:IsA("UIGradient") then gc.Enabled = false end
+							end
+						end
+					end)
+				end)
+			end
+
+			local function DisableBackground()
+				_bgActive = false
+				if Library._bgDescConn then Library._bgDescConn:Disconnect(); Library._bgDescConn = nil end
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					Library.BackgroundImageLabel.Image = ""
+					Library.BackgroundImageLabel.Visible = false
+				end
+				for obj, origTrans in pairs(_bgSnapshot) do
+					if obj and obj.Parent then
+						obj.BackgroundTransparency = origTrans
+						for _, gc in ipairs(obj:GetChildren()) do
+							if gc:IsA("UIGradient") then gc.Enabled = true end
+						end
+					end
+				end
+				_bgSnapshot = {}
+			end
+
+			local function ApplyBackground(imgSrc, transparency)
+				local resolved = ResolveImageSource(imgSrc or "")
+				if resolved == "" then
+					warn("[UI Background] Could not resolve image source: " .. tostring(imgSrc))
+					return
+				end
+				-- Same dimming behavior as before: nudge a bit more
+				-- transparent than requested so text/UI stays legible.
+				local requested = transparency or 0.35
+				local trans = math.clamp(requested + 0.15, 0, 0.92)
+
+				if Library.BackgroundImageLabel and Library.BackgroundImageLabel.Parent then
+					Library.BackgroundImageLabel.Image = resolved
+					Library.BackgroundImageLabel.ImageTransparency = trans
+					Library.BackgroundImageLabel.Visible = true
+					if not _bgActive then
+						EnableBackground(Library.BackgroundImageLabel)
+					end
+				else
+					local BgImage = Instance.new("ImageLabel", Outline)
+					BgImage.Name = "BackgroundImage"
+					BgImage.Image = resolved
+					BgImage.ScaleType = Enum.ScaleType.Crop
+					BgImage.Size = UDim2.new(1, 0, 1, 0)
+					BgImage.Position = UDim2.new(0, 0, 0, 0)
+					BgImage.BackgroundTransparency = 1
+					BgImage.ImageTransparency = trans
+					BgImage.ZIndex = 1
+					BgImage.BorderSizePixel = 0
+					Library.BackgroundImageLabel = BgImage
+					EnableBackground(BgImage)
+				end
+			end
+
+			Library._ApplyBackground  = ApplyBackground
+			Library._DisableBackground = DisableBackground
+
+			-- === FIX: CARD_HEIGHT was previously undefined here, causing
+			-- "attempt to perform arithmetic (add) on nil and number"
+			-- when CARD_TOTAL was computed below. Declared explicitly now.
+			local CARD_HEIGHT = 58
 			local CARD_MARGIN = 8
 			local CARD_TOTAL = CARD_HEIGHT + CARD_MARGIN * 2
 
@@ -662,12 +937,12 @@ do
 			Sidebar.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Sidebar.BorderSizePixel = 0
 			Sidebar.ZIndex = 52
-			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 0)
 
 			local SidebarClip = Instance.new("Frame", Sidebar)
 			SidebarClip.Name = "SidebarClip"
-			SidebarClip.Position = UDim2.new(1,-10,0,0)
-			SidebarClip.Size = UDim2.new(0,10,1,0)
+			SidebarClip.Position = UDim2.new(1,-2,0,0)
+			SidebarClip.Size = UDim2.new(0,2,1,0)
 			SidebarClip.BackgroundColor3 = Color3.fromRGB(10,10,10)
 			SidebarClip.BorderSizePixel = 0
 			SidebarClip.ZIndex = 52
@@ -698,14 +973,394 @@ do
 			LogoDivider.BorderSizePixel = 0
 			LogoDivider.ZIndex = 53
 
-			local Tabs = Instance.new('Frame', Sidebar)
+			-- =============================================
+			-- NEW: SEARCH BAR (sits between logo divider and tabs)
+			-- =============================================
+			local SearchBarFrame = Instance.new("Frame", Sidebar)
+			SearchBarFrame.Name = "SearchBarFrame"
+			SearchBarFrame.Position = UDim2.new(0, 4, 0, 79)
+			SearchBarFrame.Size = UDim2.new(1, -6, 0, 20)
+			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+			SearchBarFrame.BorderSizePixel = 0
+			SearchBarFrame.ZIndex = 54
+			Instance.new("UICorner", SearchBarFrame).CornerRadius = UDim.new(0, 3)
+			local SearchStroke = Instance.new("UIStroke", SearchBarFrame)
+			SearchStroke.Color = Color3.fromRGB(38, 38, 38)
+			SearchStroke.Thickness = 1
+
+			local SearchIcon = Instance.new("ImageLabel", SearchBarFrame)
+			SearchIcon.Size = UDim2.fromOffset(10, 10)
+			SearchIcon.Position = UDim2.new(0, 7, 0.5, 0)
+			SearchIcon.AnchorPoint = Vector2.new(0, 0.5)
+			SearchIcon.BackgroundTransparency = 1
+			SearchIcon.Image = "rbxassetid://3926305904"  -- magnifier icon
+			SearchIcon.ImageColor3 = Color3.fromRGB(70, 70, 70)
+			SearchIcon.ZIndex = 55
+
+			local SearchBox = Instance.new("TextBox", SearchBarFrame)
+			SearchBox.Name = "SearchBox"
+			SearchBox.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
+			SearchBox.PlaceholderText = "Search..."
+			SearchBox.PlaceholderColor3 = Color3.fromRGB(60, 60, 60)
+			SearchBox.Text = ""
+			SearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+			SearchBox.TextSize = 10
+			SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+			SearchBox.BackgroundTransparency = 1
+			SearchBox.BorderSizePixel = 0
+			SearchBox.ClearTextOnFocus = false
+			SearchBox.Position = UDim2.new(0, 22, 0, 0)
+			SearchBox.Size = UDim2.new(1, -28, 1, 0)
+			SearchBox.ZIndex = 55
+
+			-- Search results overlay (parented to ScreenGUI so it floats above everything)
+			local SearchResults = Instance.new("Frame", ScreenGui)
+			SearchResults.Name = "SearchResults"
+			SearchResults.BackgroundColor3 = Color3.fromRGB(16, 16, 16)
+			SearchResults.BorderSizePixel = 0
+			SearchResults.Size = UDim2.fromOffset(170, 0)
+			SearchResults.AutomaticSize = Enum.AutomaticSize.None
+			SearchResults.Visible = false
+			SearchResults.ZIndex = 200
+			Instance.new("UICorner", SearchResults).CornerRadius = UDim.new(0, 8)
+			local SRStroke = Instance.new("UIStroke", SearchResults)
+			SRStroke.Color = Color3.fromRGB(40, 40, 40)
+			SRStroke.Thickness = 1
+
+			local SearchScroll = Instance.new("ScrollingFrame", SearchResults)
+			SearchScroll.Name = "SearchScroll"
+			SearchScroll.Size = UDim2.new(1, 0, 1, 0)
+			SearchScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+			SearchScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			SearchScroll.ScrollBarThickness = 2
+			SearchScroll.ScrollBarImageColor3 = Library.Accent
+			SearchScroll.BackgroundTransparency = 1
+			SearchScroll.BorderSizePixel = 0
+			SearchScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+			SearchScroll.ZIndex = 201
+			SearchScroll.TopImage = ""
+			SearchScroll.BottomImage = ""
+
+			local SearchLayout = Instance.new("UIListLayout", SearchScroll)
+			SearchLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			SearchLayout.Padding = UDim.new(0, 2)
+
+			local SearchPad = Instance.new("UIPadding", SearchScroll)
+			SearchPad.PaddingTop = UDim.new(0, 5)
+			SearchPad.PaddingBottom = UDim.new(0, 5)
+			SearchPad.PaddingLeft = UDim.new(0, 5)
+			SearchPad.PaddingRight = UDim.new(0, 5)
+
+			-- Helper: position results panel below the search bar
+			local function PositionSearchResults()
+				local absPos = SearchBarFrame.AbsolutePosition
+				local absSize = SearchBarFrame.AbsoluteSize
+				SearchResults.Position = UDim2.fromOffset(absPos.X, absPos.Y + absSize.Y + 4)
+			end
+
+			-- Helper: clear all result rows
+			local function ClearSearchResults()
+				for _, child in ipairs(SearchScroll:GetChildren()) do
+					if child:IsA("Frame") or child:IsA("TextButton") then
+						child:Destroy()
+					end
+				end
+			end
+
+			-- =============================================
+			-- NAVIGATE TO ELEMENT: switches to the right page,
+			-- then scrolls the section column until the element
+			-- frame is visible, then flashes it so the user
+			-- immediately sees where to look.
+			-- =============================================
+			local function NavigateToElement(elementData)
+				-- 1. Close the search dropdown
+				SearchResults.Visible = false
+				SearchBox.Text = ""
+
+				-- 2. Switch to the page that owns this element
+				local targetPage = elementData.PageRef
+				if targetPage and not targetPage.Open then
+					-- Turn off all other pages
+					for _, p in pairs(Window.Pages) do
+						if p.Open then p:Turn(false) end
+					end
+					targetPage:Turn(true)
+				end
+
+				-- 3. Wait a frame so layout settles
+				task.wait(0.05)
+
+				-- 4. Find the element's GuiObject and scroll to it, then flash
+				local guiObj = elementData.GuiObject
+				if guiObj then
+					-- Find which ScrollingFrame column owns it
+					local function findScrollParent(obj)
+						local cur = obj.Parent
+						while cur do
+							if cur:IsA("ScrollingFrame") and
+								(cur.Name == "Left" or cur.Name == "Right") then
+								return cur
+							end
+							cur = cur.Parent
+						end
+						return nil
+					end
+					local col = findScrollParent(guiObj)
+					if col then
+						-- Scroll so the element sits ~1/4 from the top
+						local objRelY = guiObj.AbsolutePosition.Y - col.AbsolutePosition.Y + col.CanvasPosition.Y
+						local targetY = math.max(0, objRelY - col.AbsoluteSize.Y * 0.25)
+						TweenService:Create(col, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{CanvasPosition = Vector2.new(0, targetY)}):Play()
+					end
+
+					-- Flash highlight — a bright accent frame that fades out
+					task.wait(0.1)
+					local Flash = Instance.new("Frame", guiObj)
+					Flash.Size = UDim2.new(1, 4, 1, 4)
+					Flash.Position = UDim2.new(0, -2, 0, -2)
+					Flash.BackgroundColor3 = Library.Accent
+					Flash.BackgroundTransparency = 0.55
+					Flash.BorderSizePixel = 0
+					Flash.ZIndex = guiObj.ZIndex + 10
+					Instance.new("UICorner", Flash).CornerRadius = UDim.new(0, 6)
+					-- Pulse: fade in then out
+					TweenService:Create(Flash, TweenInfo.new(0.18), {BackgroundTransparency = 0.3}):Play()
+					task.delay(0.22, function()
+						TweenService:Create(Flash, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+						task.delay(0.52, function() Flash:Destroy() end)
+					end)
+				end
+			end
+
+			-- Helper: create a search result row
+			-- elementData = { Type, Name, Ref, PageName, SectionName, PageRef, GuiObject }
+			local function CreateSearchRow(elementData)
+				-- All rows use the UI accent color — consistent with the rest of the UI theme.
+				-- The type label still shows the element kind so users can tell them apart.
+				local accent = Library.Accent
+
+				-- Row button (entire row is clickable)
+				local Row = Instance.new("TextButton", SearchScroll)
+				Row.Size = UDim2.new(1, 0, 0, 38)
+				Row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+				Row.BackgroundTransparency = 0
+				Row.BorderSizePixel = 0
+				Row.Text = ""
+				Row.AutoButtonColor = false
+				Row.ZIndex = 202
+				Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 7)
+				local RowStroke = Instance.new("UIStroke", Row)
+				RowStroke.Color = Color3.fromRGB(35, 35, 35)
+				RowStroke.Thickness = 1
+				-- Track in ThemeObjects so accent changes apply live
+				table.insert(Library.ThemeObjects, RowStroke)
+
+				-- Left accent bar — UI accent color
+				local AccentBar = Instance.new("Frame", Row)
+				AccentBar.Size = UDim2.new(0, 3, 0.6, 0)
+				AccentBar.Position = UDim2.new(0, 0, 0.2, 0)
+				AccentBar.BackgroundColor3 = accent
+				AccentBar.BorderSizePixel = 0
+				AccentBar.ZIndex = 203
+				Instance.new("UICorner", AccentBar).CornerRadius = UDim.new(1, 0)
+				table.insert(Library.ThemeObjects, AccentBar)
+
+				-- Element name
+				local NameLabel = Instance.new("TextLabel", Row)
+				NameLabel.Position = UDim2.new(0, 12, 0, 4)
+				NameLabel.Size = UDim2.new(1, -80, 0, 16)
+				NameLabel.BackgroundTransparency = 1
+				NameLabel.Text = elementData.Name
+				NameLabel.Font = Enum.Font.GothamBold
+				NameLabel.TextSize = 11
+				NameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+				NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+				NameLabel.ZIndex = 203
+				NameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+				-- Breadcrumb  Page › Section
+				local BreadLabel = Instance.new("TextLabel", Row)
+				BreadLabel.Position = UDim2.new(0, 12, 0, 21)
+				BreadLabel.Size = UDim2.new(1, -80, 0, 13)
+				BreadLabel.BackgroundTransparency = 1
+				BreadLabel.Text = (elementData.PageName or "?") .. " › " .. (elementData.SectionName or "?")
+				BreadLabel.Font = Enum.Font.Gotham
+				BreadLabel.TextSize = 9
+				BreadLabel.TextColor3 = Color3.fromRGB(75, 75, 75)
+				BreadLabel.TextXAlignment = Enum.TextXAlignment.Left
+				BreadLabel.ZIndex = 203
+				BreadLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+				-- Type pill badge (top-right) — accent color
+				local TypeBadge = Instance.new("Frame", Row)
+				TypeBadge.Size = UDim2.fromOffset(0, 14)
+				TypeBadge.AutomaticSize = Enum.AutomaticSize.X
+				TypeBadge.Position = UDim2.new(1, -6, 0, 6)
+				TypeBadge.AnchorPoint = Vector2.new(1, 0)
+				TypeBadge.BackgroundColor3 = accent
+				TypeBadge.BackgroundTransparency = 0.6
+				TypeBadge.BorderSizePixel = 0
+				TypeBadge.ZIndex = 203
+				Instance.new("UICorner", TypeBadge).CornerRadius = UDim.new(0, 4)
+				table.insert(Library.ThemeObjects, TypeBadge)
+				local BP = Instance.new("UIPadding", TypeBadge)
+				BP.PaddingLeft = UDim.new(0, 4)
+				BP.PaddingRight = UDim.new(0, 4)
+				local TypeLabel = Instance.new("TextLabel", TypeBadge)
+				TypeLabel.Size = UDim2.new(0, 0, 1, 0)
+				TypeLabel.AutomaticSize = Enum.AutomaticSize.X
+				TypeLabel.BackgroundTransparency = 1
+				TypeLabel.Text = elementData.Type:upper()
+				TypeLabel.Font = Enum.Font.GothamBold
+				TypeLabel.TextSize = 7
+				TypeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+				TypeLabel.ZIndex = 204
+
+				-- Navigate icon (arrow) bottom-right — dim until hover
+				local NavIcon = Instance.new("ImageLabel", Row)
+				NavIcon.Size = UDim2.fromOffset(10, 10)
+				NavIcon.Position = UDim2.new(1, -10, 1, -13)
+				NavIcon.AnchorPoint = Vector2.new(1, 0)
+				NavIcon.BackgroundTransparency = 1
+				NavIcon.Image = "rbxassetid://6034818372"
+				NavIcon.ImageColor3 = Color3.fromRGB(55, 55, 55)
+				NavIcon.ZIndex = 203
+
+				-- Hover: stroke + nav icon go accent, name brightens
+				Row.MouseEnter:Connect(function()
+					local a = Library.Accent
+					TweenService:Create(Row,       TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(30, 30, 30)}):Play()
+					TweenService:Create(RowStroke, TweenInfo.new(0.12), {Color = a}):Play()
+					TweenService:Create(NavIcon,   TweenInfo.new(0.12), {ImageColor3 = a}):Play()
+					TweenService:Create(NameLabel, TweenInfo.new(0.12), {TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+				end)
+				Row.MouseLeave:Connect(function()
+					TweenService:Create(Row,       TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(25, 25, 25)}):Play()
+					TweenService:Create(RowStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(35, 35, 35)}):Play()
+					TweenService:Create(NavIcon,   TweenInfo.new(0.15), {ImageColor3 = Color3.fromRGB(55, 55, 55)}):Play()
+					TweenService:Create(NameLabel, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
+				end)
+
+				-- Click: flash row with accent then navigate
+				Row.MouseButton1Click:Connect(function()
+					TweenService:Create(Row, TweenInfo.new(0.08), {BackgroundColor3 = Library.Accent}):Play()
+					task.delay(0.1, function()
+						NavigateToElement(elementData)
+					end)
+				end)
+
+				return Row
+			end
+
+			-- The main search logic
+			local function RunSearch(query)
+				ClearSearchResults()
+				query = query:lower():gsub("^%s+", ""):gsub("%s+$", "")
+
+				if query == "" then
+					SearchResults.Visible = false
+					return
+				end
+
+				local results = {}
+				for _, entry in ipairs(Library.SearchIndex) do
+					if entry.Name and entry.Name:lower():find(query, 1, true) then
+						table.insert(results, entry)
+					end
+				end
+
+				if #results == 0 then
+					-- Show "no results" row
+					SearchResults.Size = UDim2.fromOffset(170, 44)
+					PositionSearchResults()
+					SearchResults.Visible = true
+					local NoRow = Instance.new("Frame", SearchScroll)
+					NoRow.Size = UDim2.new(1, 0, 0, 34)
+					NoRow.BackgroundTransparency = 1
+					NoRow.ZIndex = 202
+					local NoLabel = Instance.new("TextLabel", NoRow)
+					NoLabel.Size = UDim2.new(1, 0, 1, 0)
+					NoLabel.BackgroundTransparency = 1
+					NoLabel.Text = "No results for \"" .. query .. "\""
+					NoLabel.Font = Enum.Font.Gotham
+					NoLabel.TextSize = 10
+					NoLabel.TextColor3 = Color3.fromRGB(60, 60, 60)
+					NoLabel.ZIndex = 203
+					return
+				end
+
+				local rowH = 38
+				local gap = 3
+				local pad = 10
+				local maxRows = math.min(#results, 5)
+				SearchResults.Size = UDim2.fromOffset(170, maxRows * (rowH + gap) + pad)
+
+				PositionSearchResults()
+				SearchResults.Visible = true
+
+				for _, entry in ipairs(results) do
+					CreateSearchRow(entry)
+				end
+			end
+
+			SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+				RunSearch(SearchBox.Text)
+			end)
+
+			SearchBox.Focused:Connect(function()
+				TweenService:Create(SearchStroke, TweenInfo.new(0.2), {Color = Library.Accent}):Play()
+				TweenService:Create(SearchIcon, TweenInfo.new(0.2), {ImageColor3 = Library.Accent}):Play()
+				if SearchBox.Text ~= "" then
+					PositionSearchResults()
+					SearchResults.Visible = true
+				end
+			end)
+
+			SearchBox.FocusLost:Connect(function()
+				TweenService:Create(SearchStroke, TweenInfo.new(0.2), {Color = Color3.fromRGB(38, 38, 38)}):Play()
+				TweenService:Create(SearchIcon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(70, 70, 70)}):Play()
+				-- Small delay so clicks on results register before hiding
+				task.delay(0.15, function()
+					SearchResults.Visible = false
+				end)
+			end)
+
+			-- Close search results on click outside
+			Library:Connection(game:GetService("UserInputService").InputBegan, function(inp)
+				if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+					if SearchResults.Visible then
+						if not Library:IsMouseOverFrame(SearchResults) and not Library:IsMouseOverFrame(SearchBarFrame) then
+							SearchResults.Visible = false
+						end
+					end
+				end
+			end)
+
+			-- =============================================
+			-- TABS (now SCROLLABLE ScrollingFrame)
+			-- =============================================
+			-- Shifted down 30px to accommodate search bar
+			local Tabs = Instance.new('ScrollingFrame', Sidebar)
 			Tabs.Name = "Tabs"
-			Tabs.Position = UDim2.new(0, 8, 0, 80)
-			Tabs.Size = UDim2.new(1, -16, 1, -(80 + CARD_TOTAL))
+			Tabs.Position = UDim2.new(0, 4, 0, 108)
+			Tabs.Size = UDim2.new(1, -6, 1, -(108 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
 			Tabs.ClipsDescendants = true
+			-- Scrolling settings
+			Tabs.ScrollingDirection = Enum.ScrollingDirection.Y
+			Tabs.CanvasSize = UDim2.new(0, 0, 0, 0)
+			Tabs.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			Tabs.ScrollBarThickness = 2
+			Tabs.ScrollBarImageColor3 = Library.Accent
+			Tabs.ScrollBarImageTransparency = 0.6
+			Tabs.TopImage = ""
+			Tabs.BottomImage = ""
+			Tabs.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+			table.insert(Library.ThemeObjects, Tabs)
 
 			local TabLayout = Instance.new('UIListLayout', Tabs)
 			TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -827,7 +1482,7 @@ do
 			Holder.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 			Holder.BorderSizePixel = 0
 			Holder.ZIndex = 52
-			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 0)
 
 			local HolderGrad = Instance.new("UIGradient", Holder)
 			HolderGrad.Color = ColorSequence.new({
@@ -875,6 +1530,52 @@ do
 			game:GetService("TweenService"):Create(Library.Holder, TweenInfo.new(0.3, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Size = UDim2.new(0, Window.Size.X.Offset, 0, Window.Size.Y.Offset)}):Play()
 
 			Library.Holder = Outline
+
+			-- =============================================
+			-- ADDON SYSTEM: LoadAddon / LoadAllAddons
+			-- =============================================
+			function Window:LoadAddon(name)
+				local fn = Library.Addons[name]
+				if fn then
+					local ok, err = pcall(fn, self)
+					if not ok then
+						warn("[UI Addon '" .. name .. "'] Error: " .. tostring(err))
+					end
+				else
+					warn("[UI Addon] No addon registered under name: '" .. tostring(name) .. "'")
+				end
+			end
+
+			function Window:LoadAllAddons()
+				for name, fn in pairs(Library.Addons) do
+					local ok, err = pcall(fn, self)
+					if not ok then
+						warn("[UI Addon '" .. name .. "'] Error: " .. tostring(err))
+					end
+				end
+			end
+
+			-- =============================================
+			-- BACKGROUND IMAGE: runtime setter
+			-- Accepts rbxassetid://, rbxthumb://, or any
+			-- https:// URL (requires getcustomasset).
+			-- Examples:
+			--   window:SetBackground("rbxassetid://12345678")
+			--   window:SetBackground("https://i.imgur.com/abc.png", 0.3)
+			--   window:SetBackground("https://files.catbox.moe/xyz.jpg", 0.2)
+			-- =============================================
+			function Window:SetBackground(imageSource, transparency)
+				if not imageSource or imageSource == "" then
+					task.spawn(function()
+						Library._DisableBackground()
+					end)
+				else
+					task.spawn(function()
+						Library._ApplyBackground(imageSource, transparency)
+					end)
+				end
+			end
+
 			return setmetatable(Window, Library)
 		end
 
@@ -967,7 +1668,7 @@ do
 			Title.Size = UDim2.new(1, -34, 1, 0)
 			Title.BackgroundTransparency = 1
 			Title.Text = Page.Name
-			Title.Font = Enum.Font.Gotham
+			Title.Font = Enum.Font.GothamBold
 			Title.TextSize = 12
 			Title.TextColor3 = Color3.fromRGB(90, 90, 90)
 			Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -983,8 +1684,8 @@ do
 			end)
 
 			local NewPage = Instance.new("Frame", Page.Window.Elements.Holder)
-			NewPage.Position = UDim2.new(0, 8, 0, 8)
-			NewPage.Size = UDim2.new(1, -16, 1, -16)
+			NewPage.Position = UDim2.new(0, 0, 0, 8)
+			NewPage.Size = UDim2.new(1, -11, 1, -16)
 			NewPage.BackgroundTransparency = 1
 			NewPage.Visible = false
 			NewPage.ZIndex = 53
@@ -1002,17 +1703,27 @@ do
 			end
 
 			Left.Name = "Left"
-			Left.Size = UDim2.new(0.5, -5, 1, 0)
+			Left.Size = UDim2.new(0.5, -4, 1, 0)
 			Left.Position = UDim2.new(0, 0, 0, 0)
 
 			Right.Name = "Right"
-			Right.Size = UDim2.new(0.5, -5, 1, 0)
-			Right.Position = UDim2.new(0.5, 5, 0, 0)
+			Right.Size = UDim2.new(0.5, -4, 1, 0)
+			Right.Position = UDim2.new(0.5, 4, 0, 0)
 
 			local function SetupColumn(column)
 				local layout = Instance.new("UIListLayout", column)
 				layout.SortOrder = Enum.SortOrder.LayoutOrder
 				layout.Padding = UDim.new(0, 8)
+
+				-- Give Section boxes a couple pixels of breathing room on
+				-- BOTH sides — a ScrollingFrame always clips exactly at its
+				-- own edge, and Section frames previously filled 100% of
+				-- the column's width with zero margin, so their border
+				-- stroke had nowhere to render without getting clipped.
+				local pad = Instance.new("UIPadding", column)
+				pad.PaddingLeft = UDim.new(0, 2)
+				pad.PaddingRight = UDim.new(0, 2)
+
 				local function UpdateCanvas()
 					column.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
 				end
@@ -1091,7 +1802,8 @@ do
 				or Section.Page.Elements.Right
 
 			local Frame = Instance.new("Frame", Parent)
-			Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+			Frame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+			Frame.BackgroundTransparency = 0.3
 			Frame.BorderSizePixel = 0
 			Frame.LayoutOrder = #Section.Page.Sections + 1
 			Frame.ZIndex = 55
@@ -1106,15 +1818,10 @@ do
 
 			Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
 			local FrameStroke = Instance.new("UIStroke", Frame)
-			FrameStroke.Color = Color3.fromRGB(30, 30, 30)
+			FrameStroke.Color = Color3.fromRGB(70, 70, 70)
 			FrameStroke.Thickness = 1
-
-			local FrameGrad = Instance.new("UIGradient", Frame)
-			FrameGrad.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(20,20,20)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(13,13,13)),
-			})
-			FrameGrad.Rotation = 90
+			FrameStroke.Transparency = 0.4
+			-- No gradient — semi-transparent fill lets background image show through
 
 			local HeaderRow = Instance.new("Frame", Frame)
 			HeaderRow.Name = "HeaderRow"
@@ -1147,9 +1854,13 @@ do
 			HeaderTitle.Text = Section.Name
 			HeaderTitle.Font = Enum.Font.GothamBold
 			HeaderTitle.TextSize = 11
-			HeaderTitle.TextColor3 = Section.Color or Color3.fromRGB(160, 160, 160)
+			HeaderTitle.TextColor3 = Section.Color or Color3.fromRGB(200, 200, 200)
 			HeaderTitle.TextXAlignment = Enum.TextXAlignment.Left
 			HeaderTitle.ZIndex = 57
+			local HeaderStroke = Instance.new("UIStroke", HeaderTitle)
+			HeaderStroke.Color = Color3.fromRGB(0, 0, 0)
+			HeaderStroke.Thickness = 1.5
+			HeaderStroke.Transparency = 0.2
 
 			if Section.Badge then
 				local BadgeFrame = Instance.new("Frame", HeaderRow)
@@ -1185,16 +1896,16 @@ do
 			Divider.ZIndex = 56
 
 			local Content = Instance.new("Frame", Frame)
-			Content.Position = UDim2.new(0, 10, 0, 36)
+			Content.Position = UDim2.new(0, 8, 0, 36)
 			Content.BackgroundTransparency = 1
 			Content.BorderSizePixel = 0
 			Content.ZIndex = 56
 
 			if isAuto then
-				Content.Size = UDim2.new(1, -20, 0, 0)
+				Content.Size = UDim2.new(1, -16, 0, 0)
 				Content.AutomaticSize = Enum.AutomaticSize.Y
 			else
-				Content.Size = UDim2.new(1, -20, 1, -44)
+				Content.Size = UDim2.new(1, -16, 1, -44)
 				Content.AutomaticSize = Enum.AutomaticSize.None
 			end
 
@@ -1204,6 +1915,7 @@ do
 
 			local BottomPad = Instance.new("UIPadding", Content)
 			BottomPad.PaddingBottom = UDim.new(0, 8)
+			BottomPad.PaddingRight = UDim.new(0, 2)
 
 			Section.Elements.SectionContent = Content
 			Section.Page.Sections[#Section.Page.Sections + 1] = Section
@@ -1229,10 +1941,13 @@ do
 			local NewToggle = Instance.new('TextButton', Toggle.Section.Elements.SectionContent)
 			local ToggleTitle = Instance.new('TextLabel', NewToggle)
 			local ToggleFrame = Instance.new('Frame', NewToggle)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(1, 0)
 			local ToggleAccent = Instance.new('Frame', ToggleFrame)
+			ToggleAccent.Name = "ToggleAccent"
 			Instance.new('UICorner', ToggleAccent).CornerRadius = UDim.new(1, 0)
 			local Circle = Instance.new('Frame', ToggleFrame)
+			Circle.Name = "Circle"
 			Instance.new('UICorner', Circle).CornerRadius = UDim.new(1, 0)
 			local CircleGlow = Instance.new("UIStroke", Circle)
 			CircleGlow.Color = Color3.fromRGB(255,255,255)
@@ -1251,10 +1966,11 @@ do
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Text = Toggle.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180,180,180)
-			ToggleTitle.Font = Enum.Font.Gotham
+			ToggleTitle.TextColor3 = Color3.fromRGB(210,210,210)
+			ToggleTitle.Font = Enum.Font.GothamBold
 			ToggleTitle.TextSize = Library.FontSize
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(ToggleTitle)
 
 			ToggleFrame.Position = UDim2.new(1,-34,0.5,-7)
 			ToggleFrame.Size = UDim2.new(0,34,0,15)
@@ -1359,6 +2075,18 @@ do
 			Flags[Toggle.Flag] = Toggle.Set
 
 			Library:Connection(NewToggle.MouseButton1Click, SetState)
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Toggle",
+				Name = Toggle.Name,
+				Ref = Toggle,
+				PageName = (Toggle.Section and Toggle.Section.Page and Toggle.Section.Page.Name) or "?",
+				SectionName = (Toggle.Section and Toggle.Section.Name) or "?",
+				PageRef = (Toggle.Section and Toggle.Section.Page) or nil,
+				GuiObject = NewToggle,
+			})
+
 			return Toggle
 		end
 
@@ -1488,12 +2216,16 @@ do
 			local NewSlider = Instance.new('TextButton', Slider.Section.Elements.SectionContent)
 			local SliderTitle = Instance.new('TextLabel', NewSlider)
 			local ToggleFrame = Instance.new('Frame', NewSlider)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(1, 0)
 			local FillHold = Instance.new('Frame', ToggleFrame)
+			FillHold.Name = "FillHold"
 			Instance.new('UICorner', FillHold).CornerRadius = UDim.new(1, 0)
 			local Fill = Instance.new('TextButton', FillHold)
+			Fill.Name = "Fill"
 			Instance.new('UICorner', Fill).CornerRadius = UDim.new(1, 0)
 			local Circle = Instance.new('Frame', Fill)
+			Circle.Name = "Circle"
 			Instance.new('UICorner', Circle).CornerRadius = UDim.new(1, 0)
 			local SliderValue = Instance.new('TextLabel', NewSlider)
 
@@ -1508,10 +2240,11 @@ do
 			SliderTitle.BackgroundTransparency = 1
 			SliderTitle.BorderSizePixel = 0
 			SliderTitle.Text = Slider.Name
-			SliderTitle.TextColor3 = Color3.fromRGB(180,180,180)
-			SliderTitle.Font = Enum.Font.Gotham
+			SliderTitle.TextColor3 = Color3.fromRGB(210,210,210)
+			SliderTitle.Font = Enum.Font.GothamBold
 			SliderTitle.TextSize = Library.FontSize
 			SliderTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(SliderTitle)
 
 			ToggleFrame.Position = UDim2.new(0,0,1,-9)
 			ToggleFrame.Size = UDim2.new(1,0,0,9)
@@ -1549,10 +2282,11 @@ do
 			SliderValue.BackgroundTransparency = 1
 			SliderValue.BorderSizePixel = 0
 			SliderValue.Text = ""
-			SliderValue.TextColor3 = Color3.fromRGB(100,100,100)
+			SliderValue.TextColor3 = Color3.fromRGB(160,160,160)
 			SliderValue.Font = Enum.Font.Gotham
 			SliderValue.TextSize = Library.FontSize
 			SliderValue.TextXAlignment = Enum.TextXAlignment.Right
+			AddTextStroke(SliderValue)
 
 			local Sliding = false
 			local Val = Slider.State
@@ -1604,6 +2338,18 @@ do
 			Flags[Slider.Flag] = Set
 			Library.Flags[Slider.Flag] = Slider.State
 			Set(Slider.State)
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Slider",
+				Name = Slider.Name,
+				Ref = Slider,
+				PageName = (Slider.Section and Slider.Section.Page and Slider.Section.Page.Name) or "?",
+				SectionName = (Slider.Section and Slider.Section.Name) or "?",
+				PageRef = (Slider.Section and Slider.Section.Page) or nil,
+				GuiObject = NewSlider,
+			})
+
 			return Slider
 		end
 
@@ -1626,9 +2372,11 @@ do
 			local NewDropdown = Instance.new('Frame', Dropdown.Section.Elements.SectionContent)
 			local DropdownTitle = Instance.new('TextLabel', NewDropdown)
 			local ToggleFrame = Instance.new('TextButton', NewDropdown)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(0,6)
 
 			local ToggleContent = Instance.new('ScrollingFrame')
+			ToggleContent.Name = "ToggleContent"
 			Instance.new('UICorner', ToggleContent).CornerRadius = UDim.new(0,6)
 			local UIListLayout = Instance.new('UIListLayout', ToggleContent)
 
@@ -1648,10 +2396,11 @@ do
 			DropdownTitle.BackgroundTransparency = 1
 			DropdownTitle.BorderSizePixel = 0
 			DropdownTitle.Text = Dropdown.Name or ""
-			DropdownTitle.TextColor3 = Color3.fromRGB(180,180,180)
-			DropdownTitle.Font = Enum.Font.Gotham
+			DropdownTitle.TextColor3 = Color3.fromRGB(210,210,210)
+			DropdownTitle.Font = Enum.Font.GothamBold
 			DropdownTitle.TextSize = Library.FontSize
 			DropdownTitle.TextXAlignment = Enum.TextXAlignment.Left
+			AddTextStroke(DropdownTitle)
 
 			ToggleFrame.Position = UDim2.new(0,0,1,-24)
 			ToggleFrame.Size = UDim2.new(1,0,0,24)
@@ -1914,6 +2663,18 @@ do
 				Flags[Dropdown.Flag] = Dropdown
 			end
 			Dropdown:Set(Dropdown.State)
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "List",
+				Name = Dropdown.Name or "List",
+				Ref = Dropdown,
+				PageName = (Dropdown.Section and Dropdown.Section.Page and Dropdown.Section.Page.Name) or "?",
+				SectionName = (Dropdown.Section and Dropdown.Section.Name) or "?",
+				PageRef = (Dropdown.Section and Dropdown.Section.Page) or nil,
+				GuiObject = NewDropdown,
+			})
+
 			return Dropdown
 		end
 
@@ -1941,15 +2702,16 @@ do
 			NewColor.Parent = Colorpicker.Section.Elements.SectionContent
 
 			local ToggleTitle = Instance.new("TextLabel")
-			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
+			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
 			ToggleTitle.Text = Colorpicker.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+			ToggleTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			ToggleTitle.TextSize = 13
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Size = UDim2.new(1, -10, 0, 17)
 			ToggleTitle.Parent = NewColor
+			AddTextStroke(ToggleTitle)
 
 			Colorpicker.Colorpickers = Colorpicker.Colorpickers + 1
 			local colorpickertypes = Library:NewPicker(
@@ -1986,6 +2748,18 @@ do
 				end
 				return NewColorpicker
 			end
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Colorpicker",
+				Name = Colorpicker.Name,
+				Ref = Colorpicker,
+				PageName = (Colorpicker.Section and Colorpicker.Section.Page and Colorpicker.Section.Page.Name) or "?",
+				SectionName = (Colorpicker.Section and Colorpicker.Section.Name) or "?",
+				PageRef = (Colorpicker.Section and Colorpicker.Section.Page) or nil,
+				GuiObject = NewColor,
+			})
+
 			return Colorpicker
 		end
 
@@ -2005,10 +2779,6 @@ do
 			local Key
 			local State = false
 
-			-- // FIX: resolveKey returns the actual button identifier for any input.
-			-- For gamepad inputs, UserInputType is always the gamepad device (e.g. Gamepad1)
-			-- and the actual button pressed (ButtonA, ButtonX, etc.) lives in KeyCode.
-			-- For all other inputs (mouse buttons, etc.) UserInputType IS the identifier.
 			local function resolveKey(inp)
 				local t = inp.UserInputType
 				if t == Enum.UserInputType.Gamepad1
@@ -2030,20 +2800,21 @@ do
 			NewKey.Parent = Keybind.Section.Elements.SectionContent
 
 			local ToggleTitle = Instance.new("TextLabel")
-			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
+			ToggleTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
 			ToggleTitle.Text = Keybind.Name
-			ToggleTitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+			ToggleTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			ToggleTitle.TextSize = 13
 			ToggleTitle.TextXAlignment = Enum.TextXAlignment.Left
 			ToggleTitle.BackgroundTransparency = 1
 			ToggleTitle.BorderSizePixel = 0
 			ToggleTitle.Size = UDim2.new(1, -10, 0, 17)
 			ToggleTitle.Parent = NewKey
+			AddTextStroke(ToggleTitle)
 
 			local KeyText = Instance.new("TextLabel")
 			KeyText.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
 			KeyText.Text = "None"
-			KeyText.TextColor3 = Color3.fromRGB(100, 100, 100)
+			KeyText.TextColor3 = Color3.fromRGB(150, 150, 150)
 			KeyText.TextSize = 12
 			KeyText.TextXAlignment = Enum.TextXAlignment.Right
 			KeyText.BackgroundTransparency = 1
@@ -2110,8 +2881,6 @@ do
 						function(input, gpe)
 							if gpe then return end
 							if input.UserInputType == Enum.UserInputType.Touch then return end
-							-- FIX: use resolveKey so gamepad buttons store their KeyCode,
-							-- not the generic Gamepad1 UserInputType
 							set(input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode or resolveKey(input))
 							Library:Disconnect(Keybind.Binding)
 							task.wait()
@@ -2124,8 +2893,6 @@ do
 
 			Library:Connection(game:GetService("UserInputService").InputBegan, function(inp, gpe)
 				if gpe then return end
-				-- FIX: compare against resolveKey(inp) so each gamepad button only
-				-- triggers the keybind it was actually bound to
 				if (inp.KeyCode == Key or resolveKey(inp) == Key) and not Keybind.Binding and not Keybind.UseKey then
 					if Keybind.Mode == "Hold" then
 						if Keybind.Flag then Library.Flags[Keybind.Flag] = true end
@@ -2144,7 +2911,6 @@ do
 				if gpe then return end
 				if Keybind.Mode == "Hold" and not Keybind.UseKey then
 					if Key ~= "" or Key ~= nil then
-						-- FIX: same resolveKey fix so Hold mode releases correctly per-button
 						if inp.KeyCode == Key or resolveKey(inp) == Key then
 							if c then
 								c:Disconnect()
@@ -2163,6 +2929,18 @@ do
 			Flags[Keybind.Flag .. "_KEY STATE"] = set
 
 			function Keybind:Set(key) set(key) end
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Keybind",
+				Name = Keybind.Name,
+				Ref = Keybind,
+				PageName = (Keybind.Section and Keybind.Section.Page and Keybind.Section.Page.Name) or "?",
+				SectionName = (Keybind.Section and Keybind.Section.Name) or "?",
+				PageRef = (Keybind.Section and Keybind.Section.Page) or nil,
+				GuiObject = NewKey,
+			})
+
 			return Keybind
 		end
 
@@ -2192,9 +2970,9 @@ do
 
 			if TextboxName then
 				local TitleLabel = Instance.new("TextLabel")
-				TitleLabel.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
+				TitleLabel.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
 				TitleLabel.Text = TextboxName
-				TitleLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+				TitleLabel.TextColor3 = Color3.fromRGB(210, 210, 210)
 				TitleLabel.TextSize = 12
 				TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 				TitleLabel.BackgroundTransparency = 1
@@ -2202,9 +2980,11 @@ do
 				TitleLabel.Size = UDim2.new(1, -8, 0, 20)
 				TitleLabel.ZIndex = 55
 				TitleLabel.Parent = NewBox
+				AddTextStroke(TitleLabel)
 			end
 
 			local ToggleFrame = Instance.new("Frame")
+			ToggleFrame.Name = "ToggleFrame"
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.Position = UDim2.new(0, 0, 0, extraHeight)
@@ -2253,6 +3033,18 @@ do
 
 			Flags[Textbox.Flag] = set
 			Library.Flags[Textbox.Flag] = Textbox.State
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Textbox",
+				Name = TextboxName or "Textbox",
+				Ref = Textbox,
+				PageName = (Textbox.Section and Textbox.Section.Page and Textbox.Section.Page.Name) or "?",
+				SectionName = (Textbox.Section and Textbox.Section.Name) or "?",
+				PageRef = (Textbox.Section and Textbox.Section.Page) or nil,
+				GuiObject = NewBox,
+			})
+
 			return Textbox
 		end
 
@@ -2277,6 +3069,7 @@ do
 			NewButton.Parent = Button.Section.Elements.SectionContent
 
 			local ToggleFrame = Instance.new("Frame")
+			ToggleFrame.Name = "ToggleFrame"
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -2286,6 +3079,7 @@ do
 			BtnStroke.Color = Color3.fromRGB(38,38,38)
 
 			local BtnShimmer = Instance.new("Frame", ToggleFrame)
+			BtnShimmer.Name = "BtnShimmer"
 			BtnShimmer.Size = UDim2.new(1,0,1,0)
 			BtnShimmer.BackgroundColor3 = Color3.fromRGB(255,255,255)
 			BtnShimmer.BackgroundTransparency = 1
@@ -2294,15 +3088,16 @@ do
 			Instance.new("UICorner", BtnShimmer).CornerRadius = UDim.new(0,6)
 
 			local DropdownTitle = Instance.new("TextLabel")
-			DropdownTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json")
+			DropdownTitle.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
 			DropdownTitle.Text = Button.Name
-			DropdownTitle.TextColor3 = Color3.fromRGB(190, 190, 190)
+			DropdownTitle.TextColor3 = Color3.fromRGB(210, 210, 210)
 			DropdownTitle.TextSize = 12
 			DropdownTitle.BackgroundTransparency = 1
 			DropdownTitle.BorderSizePixel = 0
 			DropdownTitle.Size = UDim2.fromScale(1, 1)
 			DropdownTitle.ZIndex = 57
 			DropdownTitle.Parent = ToggleFrame
+			AddTextStroke(DropdownTitle)
 
 			ToggleFrame.Parent = NewButton
 
@@ -2323,6 +3118,17 @@ do
 			NewButton.MouseLeave:Connect(function()
 				TweenService:Create(BtnStroke, TweenInfo.new(0.15), {Color = Color3.fromRGB(38,38,38)}):Play()
 			end)
+
+			-- SEARCH: register this element
+			table.insert(Library.SearchIndex, {
+				Type = "Button",
+				Name = Button.Name,
+				Ref = Button,
+				PageName = (Button.Section and Button.Section.Page and Button.Section.Page.Name) or "?",
+				SectionName = (Button.Section and Button.Section.Name) or "?",
+				PageRef = (Button.Section and Button.Section.Page) or nil,
+				GuiObject = NewButton,
+			})
 		end
 
 		-- // Watermark
