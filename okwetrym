@@ -355,6 +355,7 @@ do
 			end)
 
 			local ColorpickerFrame = Instance.new("TextButton")
+			ColorpickerFrame.Name = "ColorpickerFrame"
 			ColorpickerFrame.BackgroundColor3 = default
 			ColorpickerFrame.BorderSizePixel = 0
 			if count == 1 then
@@ -372,6 +373,7 @@ do
 			Stroke.Color = Color3.fromRGB(50, 50, 50)
 
 			local Colorpicker = Instance.new("TextButton")
+			Colorpicker.Name = "ColorpickerPopup"
 			Colorpicker.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 			Colorpicker.BorderSizePixel = 0
 			Colorpicker.Size = UDim2.new(0, 185, 0, 190)
@@ -416,6 +418,7 @@ do
 			Instance.new("UICorner", HueBar).CornerRadius = UDim.new(1, 0)
 
 			local HueSlider = Instance.new("Frame")
+			HueSlider.Name = "HueSlider"
 			HueSlider.Size = UDim2.new(0, 14, 0, 14)
 			HueSlider.AnchorPoint = Vector2.new(0, 0.5)
 			HueSlider.BackgroundColor3 = Color3.new(1, 1, 1)
@@ -811,6 +814,9 @@ do
 				AccentBar      = true,  -- tab left accent stripe
 				BtnShimmer     = true,  -- button click flash
 				ToggleContent  = true,  -- dropdown/list open option panel
+				ColorpickerFrame = true, -- colorpicker swatch
+				ColorpickerPopup = true, -- colorpicker's open hue/sat panel
+				HueSlider      = true,  -- colorpicker's hue-bar knob
 				Outline        = true,  -- top-level window border (has the image as a child)
 				-- Inline is NOT kept opaque — it covers nearly the whole
 				-- window, so keeping it solid hides the image behind
@@ -1910,10 +1916,13 @@ do
 			local NewToggle = Instance.new('TextButton', Toggle.Section.Elements.SectionContent)
 			local ToggleTitle = Instance.new('TextLabel', NewToggle)
 			local ToggleFrame = Instance.new('Frame', NewToggle)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(1, 0)
 			local ToggleAccent = Instance.new('Frame', ToggleFrame)
+			ToggleAccent.Name = "ToggleAccent"
 			Instance.new('UICorner', ToggleAccent).CornerRadius = UDim.new(1, 0)
 			local Circle = Instance.new('Frame', ToggleFrame)
+			Circle.Name = "Circle"
 			Instance.new('UICorner', Circle).CornerRadius = UDim.new(1, 0)
 			local CircleGlow = Instance.new("UIStroke", Circle)
 			CircleGlow.Color = Color3.fromRGB(255,255,255)
@@ -2182,12 +2191,16 @@ do
 			local NewSlider = Instance.new('TextButton', Slider.Section.Elements.SectionContent)
 			local SliderTitle = Instance.new('TextLabel', NewSlider)
 			local ToggleFrame = Instance.new('Frame', NewSlider)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(1, 0)
 			local FillHold = Instance.new('Frame', ToggleFrame)
+			FillHold.Name = "FillHold"
 			Instance.new('UICorner', FillHold).CornerRadius = UDim.new(1, 0)
 			local Fill = Instance.new('TextButton', FillHold)
+			Fill.Name = "Fill"
 			Instance.new('UICorner', Fill).CornerRadius = UDim.new(1, 0)
 			local Circle = Instance.new('Frame', Fill)
+			Circle.Name = "Circle"
 			Instance.new('UICorner', Circle).CornerRadius = UDim.new(1, 0)
 			local SliderValue = Instance.new('TextLabel', NewSlider)
 
@@ -2334,9 +2347,11 @@ do
 			local NewDropdown = Instance.new('Frame', Dropdown.Section.Elements.SectionContent)
 			local DropdownTitle = Instance.new('TextLabel', NewDropdown)
 			local ToggleFrame = Instance.new('TextButton', NewDropdown)
+			ToggleFrame.Name = "ToggleFrame"
 			Instance.new('UICorner', ToggleFrame).CornerRadius = UDim.new(0,6)
 
 			local ToggleContent = Instance.new('ScrollingFrame')
+			ToggleContent.Name = "ToggleContent"
 			Instance.new('UICorner', ToggleContent).CornerRadius = UDim.new(0,6)
 			local UIListLayout = Instance.new('UIListLayout', ToggleContent)
 
@@ -2944,6 +2959,7 @@ do
 			end
 
 			local ToggleFrame = Instance.new("Frame")
+			ToggleFrame.Name = "ToggleFrame"
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.Position = UDim2.new(0, 0, 0, extraHeight)
@@ -3028,6 +3044,7 @@ do
 			NewButton.Parent = Button.Section.Elements.SectionContent
 
 			local ToggleFrame = Instance.new("Frame")
+			ToggleFrame.Name = "ToggleFrame"
 			ToggleFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
 			ToggleFrame.BorderSizePixel = 0
 			ToggleFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -3037,6 +3054,7 @@ do
 			BtnStroke.Color = Color3.fromRGB(38,38,38)
 
 			local BtnShimmer = Instance.new("Frame", ToggleFrame)
+			BtnShimmer.Name = "BtnShimmer"
 			BtnShimmer.Size = UDim2.new(1,0,1,0)
 			BtnShimmer.BackgroundColor3 = Color3.fromRGB(255,255,255)
 			BtnShimmer.BackgroundTransparency = 1
