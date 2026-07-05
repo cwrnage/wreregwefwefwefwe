@@ -937,7 +937,7 @@ do
 			Sidebar.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
 			Sidebar.BorderSizePixel = 0
 			Sidebar.ZIndex = 52
-			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Sidebar).CornerRadius = UDim.new(0, 0)
 
 			local SidebarClip = Instance.new("Frame", Sidebar)
 			SidebarClip.Name = "SidebarClip"
@@ -979,7 +979,7 @@ do
 			local SearchBarFrame = Instance.new("Frame", Sidebar)
 			SearchBarFrame.Name = "SearchBarFrame"
 			SearchBarFrame.Position = UDim2.new(0, 4, 0, 79)
-			SearchBarFrame.Size = UDim2.new(1, -10, 0, 20)
+			SearchBarFrame.Size = UDim2.new(1, -16, 0, 20)
 			SearchBarFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 			SearchBarFrame.BorderSizePixel = 0
 			SearchBarFrame.ZIndex = 54
@@ -1345,7 +1345,7 @@ do
 			local Tabs = Instance.new('ScrollingFrame', Sidebar)
 			Tabs.Name = "Tabs"
 			Tabs.Position = UDim2.new(0, 4, 0, 108)
-			Tabs.Size = UDim2.new(1, -6, 1, -(108 + CARD_TOTAL))
+			Tabs.Size = UDim2.new(1, -16, 1, -(108 + CARD_TOTAL))
 			Tabs.BackgroundTransparency = 1
 			Tabs.BorderSizePixel = 0
 			Tabs.ZIndex = 53
@@ -1482,7 +1482,7 @@ do
 			Holder.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
 			Holder.BorderSizePixel = 0
 			Holder.ZIndex = 52
-			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 10)
+			Instance.new('UICorner', Holder).CornerRadius = UDim.new(0, 0)
 
 			local HolderGrad = Instance.new("UIGradient", Holder)
 			HolderGrad.Color = ColorSequence.new({
