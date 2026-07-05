@@ -260,6 +260,22 @@ do
 			return false;
 		end;
 
+		-- Works the same as the per-window Window:SetBackground, but callable
+		-- directly on the Library/module table — matching how ChangeAccent,
+		-- Notification, GetConfig, and LoadConfig are already called as
+		-- "library:MethodName(...)" in most scripts.
+		function Library:SetBackground(imageSource, transparency)
+			if not imageSource or imageSource == "" then
+				task.spawn(function()
+					if Library._DisableBackground then Library._DisableBackground() end
+				end)
+			else
+				task.spawn(function()
+					if Library._ApplyBackground then Library._ApplyBackground(imageSource, transparency) end
+				end)
+			end
+		end
+
 		function MakeDraggable(Instance)
 			local Dragging
 			local DragInput
