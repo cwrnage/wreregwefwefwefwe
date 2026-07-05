@@ -738,6 +738,7 @@ do
 		-- Background image machinery (EnableBackground/DisableBackground/
 		-- ApplyBackground) lives inside Library:New(), right after Inline
 		-- is created, since it needs a closure over that window's Outline.
+		function Library:New(Properties)
 			if not Properties then
 				Properties = {}
 			end
