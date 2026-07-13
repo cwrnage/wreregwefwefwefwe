@@ -642,14 +642,13 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 	})
 
 	local list = New("Frame", {
-		Parent = button,
+		Parent = self.Library.ScreenGui,
 		BackgroundColor3 = Theme.TitleBar,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 0),
-		Position = UDim2.new(0, 0, 1, 2),
+		Size = UDim2.new(0, 0, 0, 0), -- sized to match button width once opened
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Visible = false,
-		ZIndex = 20,
+		ZIndex = 50,
 	})
 	AddBevel(list, Theme.Background)
 	AddFillGradient(list)
@@ -676,7 +675,7 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 		local optionLabel = TextLabel({
 			Parent = list,
 			Size = UDim2.new(1, 0, 0, 12),
-			ZIndex = 20,
+			ZIndex = 50,
 			Text = tostring(option),
 			TextColor3 = option == selected and Theme.Accent or Theme.Text,
 		})
@@ -691,8 +690,27 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 		end)
 	end
 
+	local function openList()
+		list.Size = UDim2.fromOffset(button.AbsoluteSize.X, 0)
+		list.Position = UDim2.fromOffset(button.AbsolutePosition.X, button.AbsolutePosition.Y + button.AbsoluteSize.Y + 2)
+		list.Visible = true
+	end
+
 	Clickable(button, function()
-		list.Visible = not list.Visible
+		if list.Visible then
+			list.Visible = false
+		else
+			openList()
+		end
+	end)
+
+	-- Clicking/tapping anywhere outside the list (and outside the button
+	-- itself, which toggles it above) closes it without changing selection.
+	UserInputService.InputBegan:Connect(function(input)
+		if not list.Visible then return end
+		if not IsPressInput(input.UserInputType) then return end
+		if PointInside(list, input.Position) or PointInside(button, input.Position) then return end
+		list.Visible = false
 	end)
 
 	self.Library.Flags[flagName] = selected
