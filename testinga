@@ -1304,4 +1304,6 @@ function Window:CreateKeybindsList(config)
 	return { Refresh = refresh, Frame = frame }
 end
 
+Library.Theme = Theme -- exposed so consumers can build matching rich text (e.g. Theme.Accent)
+
 return Library
