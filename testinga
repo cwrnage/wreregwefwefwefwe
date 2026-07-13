@@ -874,6 +874,7 @@ function Library:CreateWatermark(config)
 		Size = UDim2.new(1, 0, 0, 1),
 		Position = UDim2.new(0, 0, 1, -1),
 	})
+	MakeDraggable(frame, frame)
 
 	return {
 		SetText = function(_, text) label.Text = text end,
