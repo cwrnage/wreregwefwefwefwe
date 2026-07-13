@@ -158,6 +158,24 @@ Tab.__index = Tab
 local Groupbox = {}
 Groupbox.__index = Groupbox
 
+local function BuildTitleText(config)
+	local title = config.Title or "UI Library"
+	local text = title
+	if config.TitleAccent then
+		local startIdx, endIdx = title:find(config.TitleAccent, 1, true)
+		if startIdx then
+			local accentColor = string.format("rgb(%d, %d, %d)", Theme.Accent.R * 255, Theme.Accent.G * 255, Theme.Accent.B * 255)
+			text = title:sub(1, startIdx - 1)
+				.. string.format('<font color="%s">%s</font>', accentColor, title:sub(startIdx, endIdx))
+				.. title:sub(endIdx + 1)
+		end
+	end
+	if config.Subtitle then
+		text = text .. " ~ " .. config.Subtitle
+	end
+	return text
+end
+
 function Library:CreateWindow(config)
 	config = config or {}
 
@@ -206,7 +224,8 @@ function Library:CreateWindow(config)
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BackgroundTransparency = 1,
-		Text = config.Title or "UI Library",
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = BuildTitleText(config),
 	})
 
 	-- Holder = outer rounded frame, Container = tabs + content area
@@ -291,6 +310,7 @@ function Window:CreateTab(name)
 		Parent = page,
 		FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+		VerticalFlex = Enum.UIFlexAlignment.Fill,
 		Padding = UDim.new(0, 8),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	})
@@ -332,7 +352,8 @@ function Tab:CreateGroupbox(side, title)
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Size = UDim2.fromOffset(100, 100), -- resized by UIListLayout fill
-			ScrollBarThickness = 0,
+			ScrollBarThickness = 2,
+			ScrollBarImageColor3 = Theme.Accent,
 			CanvasSize = UDim2.new(0, 0, 0, 0),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		})
@@ -1184,7 +1205,11 @@ function Window:CreateKeybindsList(config)
 				})
 			end
 		end
-		frame.Visible = #contents:GetChildren() > 1 -- hide if nothing bound (only UIListLayout/UIPadding present)
+		local boundCount = 0
+		for _, child in ipairs(contents:GetChildren()) do
+			if child:IsA("TextLabel") then boundCount = boundCount + 1 end
+		end
+		frame.Visible = boundCount > 0
 	end
 
 	self._refreshKeybindsPanel = refresh
