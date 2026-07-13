@@ -145,6 +145,31 @@ end
 -- True on touch-only devices (phones/tablets), false on PC/console with a mouse.
 local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
+-- Picks the best place to parent our ScreenGuis so they render above Roblox's
+-- own core UI (escape menu, chat, etc.) instead of being tucked under it in
+-- PlayerGui. Prefers the executor's hidden-UI container if one's exposed,
+-- then CoreGui, and falls back to PlayerGui if neither is accessible
+-- (e.g. running in Studio).
+local function GetGuiParent()
+	if gethui then
+		local ok, hiddenUI = pcall(gethui)
+		if ok and hiddenUI then return hiddenUI end
+	end
+	local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if ok and coreGui then return coreGui end
+	return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+-- Parents `gui` to the best available layer, falling back to PlayerGui if
+-- the attempt is rejected (some environments restrict parenting to CoreGui).
+local function ParentAboveCoreUI(gui)
+	gui.DisplayOrder = 2147483647
+	local ok = pcall(function() gui.Parent = GetGuiParent() end)
+	if not ok then
+		gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end
+end
+
 local function IsPressInput(inputType)
 	return inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.Touch
 end
@@ -237,6 +262,7 @@ function Library:CreateWindow(config)
 		ResetOnSpawn = false,
 		Parent = LocalPlayer:WaitForChild("PlayerGui"),
 	})
+	ParentAboveCoreUI(self.ScreenGui)
 
 	self.IsMobile = IsMobile
 	local defaultSize = IsMobile and UDim2.fromOffset(320, 400) or UDim2.fromOffset(450, 500)
@@ -451,11 +477,11 @@ function Tab:CreateGroupbox(side, title)
 	})
 
 	local contents = New("Frame", {
-		Parent = titleBar,
+		Parent = box,
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 0),
-		Position = UDim2.new(0, 0, 1, 0),
+		Position = UDim2.new(0, 0, 0, 20),
 		AutomaticSize = Enum.AutomaticSize.Y,
 	})
 	New("UIListLayout", {
@@ -849,6 +875,7 @@ function Library:CreateWatermark(config)
 		ResetOnSpawn = false,
 		Parent = LocalPlayer:WaitForChild("PlayerGui"),
 	})
+	ParentAboveCoreUI(gui)
 
 	local frame = New("Frame", {
 		Parent = gui,
