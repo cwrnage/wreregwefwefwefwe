@@ -142,6 +142,53 @@ local function Clickable(parent, callback)
 	return button
 end
 
+-- True on touch-only devices (phones/tablets), false on PC/console with a mouse.
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+
+local function IsPressInput(inputType)
+	return inputType == Enum.UserInputType.MouseButton1 or inputType == Enum.UserInputType.Touch
+end
+
+local function IsMoveInput(inputType)
+	return inputType == Enum.UserInputType.MouseMovement or inputType == Enum.UserInputType.Touch
+end
+
+local function PointInside(frame, pos)
+	local abs, size = frame.AbsolutePosition, frame.AbsoluteSize
+	return pos.X >= abs.X and pos.X <= abs.X + size.X and pos.Y >= abs.Y and pos.Y <= abs.Y + size.Y
+end
+
+-- Makes `target` draggable by pressing/holding on `handle`. Works with both
+-- mouse (PC) and touch (mobile) input.
+local function MakeDraggable(handle, target)
+	local dragging = false
+	local dragStart, startPos
+
+	handle.InputBegan:Connect(function(input)
+		if not IsPressInput(input.UserInputType) then return end
+		dragging = true
+		dragStart = input.Position
+		startPos = target.Position
+
+		local conn
+		conn = input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+				conn:Disconnect()
+			end
+		end)
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging or not IsMoveInput(input.UserInputType) then return end
+		local delta = input.Position - dragStart
+		target.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end)
+end
+
 --============================================================
 -- LIBRARY / WINDOW
 --============================================================
@@ -191,13 +238,17 @@ function Library:CreateWindow(config)
 		Parent = LocalPlayer:WaitForChild("PlayerGui"),
 	})
 
+	self.IsMobile = IsMobile
+	local defaultSize = IsMobile and UDim2.fromOffset(320, 400) or UDim2.fromOffset(450, 500)
+	local defaultPosition = IsMobile and UDim2.new(0.5, -160, 0.5, -200) or UDim2.fromScale(0.36, 0.15)
+
 	self.Main = New("Frame", {
 		Name = "Main",
 		Parent = self.ScreenGui,
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
-		Size = config.Size or UDim2.fromOffset(450, 500),
-		Position = config.Position or UDim2.fromScale(0.36, 0.15),
+		Size = config.Size or defaultSize,
+		Position = config.Position or defaultPosition,
 	})
 	AddBevel(self.Main)
 	New("UIShadow", { Parent = self.Main })
@@ -227,6 +278,7 @@ function Library:CreateWindow(config)
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Text = BuildTitleText(config),
 	})
+	MakeDraggable(titleBar, self.Main)
 
 	-- Holder = outer rounded frame, Container = tabs + content area
 	self.Holder = New("Frame", {
@@ -838,11 +890,14 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 	AddBevel(swatch, Color3.fromHSV(hue, sat, val))
 
 	-- floating popup, parented to the window's ScreenGui so it renders above everything
+	local isMobile = self.Library.IsMobile
+	local popupW = isMobile and 150 or 175
+	local svW, svH = isMobile and 112 or 132, isMobile and 100 or 118
 	local popup = New("Frame", {
 		Parent = self.Library.ScreenGui,
 		BackgroundColor3 = Theme.Background,
 		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(175, alpha and 178 or 160),
+		Size = UDim2.fromOffset(popupW, (alpha and 178 or 160) - (isMobile and 18 or 0)),
 		Visible = false,
 		ZIndex = 50,
 	})
@@ -859,13 +914,14 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 	AddFillGradient(titleBar)
 	AddBevel(titleBar)
 	TextLabel({ Parent = titleBar, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 50, Text = "Color Picker" })
+	MakeDraggable(titleBar, popup)
 
 	-- saturation/value box
 	local svBox = New("Frame", {
 		Parent = popup,
 		BackgroundColor3 = Color3.fromHSV(hue, 1, 1),
 		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(132, 118),
+		Size = UDim2.fromOffset(svW, svH),
 		Position = UDim2.fromOffset(10, 30),
 		ZIndex = 50,
 	})
@@ -890,8 +946,8 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 	local hueBar = New("Frame", {
 		Parent = popup,
 		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(12, 119),
-		Position = UDim2.fromOffset(153, 29),
+		Size = UDim2.fromOffset(12, svH + 1),
+		Position = UDim2.fromOffset(10 + svW + 11, 29),
 		ZIndex = 50,
 	})
 	New("UIGradient", {
@@ -919,7 +975,7 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 	if alpha then
 		alphaBar = New("Frame", {
 			Parent = popup, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
-			Size = UDim2.fromOffset(155, 12), Position = UDim2.fromOffset(10, 154), ZIndex = 50,
+			Size = UDim2.fromOffset(popupW - 20, 12), Position = UDim2.fromOffset(10, 30 + svH + 6), ZIndex = 50,
 		})
 		AddBevel(alphaBar)
 		New("UIGradient", { Parent = alphaBar, Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.new(1, 1, 1)) })
@@ -967,31 +1023,42 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 
 	local draggingSV, draggingHue, draggingAlpha = false, false, false
 	svBox.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingSV = true; updateSV(input.Position) end
+		if IsPressInput(input.UserInputType) then draggingSV = true; updateSV(input.Position) end
 	end)
 	hueBar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingHue = true; updateHue(input.Position) end
+		if IsPressInput(input.UserInputType) then draggingHue = true; updateHue(input.Position) end
 	end)
 	if alphaBar then
 		alphaBar.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingAlpha = true; updateAlpha(input.Position) end
+			if IsPressInput(input.UserInputType) then draggingAlpha = true; updateAlpha(input.Position) end
 		end)
 	end
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if IsPressInput(input.UserInputType) then
 			draggingSV, draggingHue, draggingAlpha = false, false, false
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		if not IsMoveInput(input.UserInputType) then return end
 		if draggingSV then updateSV(input.Position) end
 		if draggingHue then updateHue(input.Position) end
 		if draggingAlpha then updateAlpha(input.Position) end
 	end)
 
 	Clickable(swatch, function()
-		popup.Position = UDim2.fromOffset(swatch.AbsolutePosition.X - 175 + 30, swatch.AbsolutePosition.Y)
+		if not popup.Visible then
+			popup.Position = UDim2.fromOffset(swatch.AbsolutePosition.X - popupW + 30, swatch.AbsolutePosition.Y)
+		end
 		popup.Visible = not popup.Visible
+	end)
+
+	-- Clicking/tapping anywhere outside the popup (and outside the swatch,
+	-- which has its own toggle above) finalizes the color and closes it.
+	UserInputService.InputBegan:Connect(function(input)
+		if not popup.Visible then return end
+		if not IsPressInput(input.UserInputType) then return end
+		if PointInside(popup, input.Position) or PointInside(swatch, input.Position) then return end
+		popup.Visible = false
 	end)
 
 	self.Library.Flags[flagName] = alpha and { Color = currentColor(), Alpha = alpha } or currentColor()
@@ -1171,12 +1238,13 @@ function Window:CreateKeybindsList(config)
 		Parent = self.ScreenGui,
 		BackgroundColor3 = Theme.TitleBar,
 		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(config.Width or 155, 20),
+		Size = UDim2.fromOffset(config.Width or (self.IsMobile and 130 or 155), 20),
 		Position = config.Position or UDim2.fromOffset(200, 50),
 	})
 	AddFillGradient(frame)
 	AddBevel(frame)
 	TextLabel({ Parent = frame, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Text = config.Title or "Keybinds" })
+	MakeDraggable(frame, frame)
 
 	local contents = New("Frame", {
 		Parent = frame,
