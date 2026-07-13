@@ -1,0 +1,775 @@
+--[[
+	UILibrary.lua
+
+	A clean, component-based rewrite of the raw Instance.new dump.
+	Same visual language (dark background, red accent, tahoma-xp font,
+	1px strokes + subtle gradients) but built as reusable factories
+	instead of one-off instances, so adding a new toggle/slider/etc.
+	is one function call instead of 20+ lines of boilerplate.
+
+	Usage:
+		local UI = require(script.UILibrary)
+		local Window = UI:CreateWindow({ Title = "serial.xyz" })
+
+		local Tab1 = Window:CreateTab("Aimbot")
+		local Left = Tab1:CreateGroupbox("Left", "example section 1")
+
+		Left:AddToggle("MyToggle", { Text = "example toggle", Default = false }, function(state)
+			print("toggle ->", state)
+		end)
+
+		Left:AddSlider("MySlider", { Text = "example slider", Min = 0, Max = 100, Default = 82, Suffix = "%" }, function(value)
+			print("slider ->", value)
+		end)
+]]
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+--============================================================
+-- THEME
+--============================================================
+
+local Theme = {
+	Background   = Color3.fromRGB(28, 28, 28),
+	Section      = Color3.fromRGB(43, 43, 43),
+	TitleBar     = Color3.fromRGB(51, 51, 51),
+	Accent       = Color3.fromRGB(255, 83, 86),
+	StrokeDark   = Color3.fromRGB(51, 51, 51),
+	StrokeLight  = Color3.fromRGB(255, 255, 255),
+	Text         = Color3.fromRGB(255, 255, 255),
+	SubText      = Color3.fromRGB(209, 209, 209),
+	MutedText    = Color3.fromRGB(131, 131, 131),
+	Font         = Font.new("rbxasset://fonts/families/windows-xp-tahoma.json"),
+}
+
+--============================================================
+-- LOW LEVEL HELPERS
+--============================================================
+
+-- Instance.new + property table + children, in one call.
+local function New(className, props, children)
+	local inst = Instance.new(className)
+	for prop, value in pairs(props or {}) do
+		inst[prop] = value
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = inst
+	end
+	return inst
+end
+
+-- Adds the "bright top-left, dark bottom-right" bevel look used everywhere
+-- in the original dump (outer 1px black stroke + inner light/dark stroke
+-- with a subtle vertical gradient).
+local function AddBevel(parent, innerColor)
+	New("UIStroke", { Parent = parent, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+	local inner = New("UIStroke", {
+		Parent = parent,
+		Color = innerColor or Theme.StrokeDark,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		BorderStrokePosition = Enum.BorderStrokePosition.Inner,
+	})
+	New("UIGradient", {
+		Parent = inner,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(159, 159, 159)),
+			ColorSequenceKeypoint.new(0.05, Color3.fromRGB(241, 241, 241)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+		}),
+	})
+end
+
+local function AddFillGradient(parent)
+	New("UIGradient", {
+		Parent = parent,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(173, 173, 173)),
+		}),
+	})
+end
+
+local function Label(props)
+	return New("TextLabel", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		FontFace = Theme.Font,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		TextStrokeTransparency = 0.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		RichText = true,
+		Text = "",
+	}, nil), props and (function(l)
+		for k, v in pairs(props) do l[k] = v end
+		return l
+	end)
+end
+
+-- simpler helper: creates a TextLabel with props merged in directly
+local function TextLabel(props)
+	local base = {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		FontFace = Theme.Font,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		TextStrokeTransparency = 0.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		RichText = true,
+	}
+	for k, v in pairs(props or {}) do base[k] = v end
+	return New("TextLabel", base)
+end
+
+local function Clickable(parent, callback)
+	local button = New("TextButton", {
+		Parent = parent,
+		BackgroundTransparency = 1,
+		Text = "",
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 10,
+	})
+	button.MouseButton1Click:Connect(function()
+		if callback then callback() end
+	end)
+	return button
+end
+
+--============================================================
+-- LIBRARY / WINDOW
+--============================================================
+
+local Library = {}
+Library.__index = Library
+
+local Window = {}
+Window.__index = Window
+
+local Tab = {}
+Tab.__index = Tab
+
+local Groupbox = {}
+Groupbox.__index = Groupbox
+
+function Library:CreateWindow(config)
+	config = config or {}
+
+	local self = setmetatable({}, Library)
+	self.Flags = {} -- Flags[name] = current value, shared across all components
+
+	self.ScreenGui = New("ScreenGui", {
+		Name = config.Title or "UILibrary",
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		ResetOnSpawn = false,
+		Parent = LocalPlayer:WaitForChild("PlayerGui"),
+	})
+
+	self.Main = New("Frame", {
+		Name = "Main",
+		Parent = self.ScreenGui,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = config.Size or UDim2.fromOffset(450, 500),
+		Position = config.Position or UDim2.fromScale(0.36, 0.15),
+	})
+	AddBevel(self.Main)
+	New("UIShadow", { Parent = self.Main })
+
+	-- title strip
+	local titleBar = New("Frame", {
+		Parent = self.Main,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 2, 0, 18),
+		Position = UDim2.new(0, -1, 0, -18),
+	})
+	New("UIGradient", {
+		Parent = titleBar,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(31, 31, 31)),
+			ColorSequenceKeypoint.new(0.875, Theme.Accent),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(31, 31, 31)),
+		}),
+	})
+	TextLabel({
+		Parent = titleBar,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
+		Text = config.Title or "UI Library",
+	})
+
+	-- Holder = outer rounded frame, Container = tabs + content area
+	self.Holder = New("Frame", {
+		Parent = self.Main,
+		BackgroundColor3 = Theme.Section,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, -24, 1, -22),
+		Position = UDim2.new(0, 12, 0, 10),
+	})
+	AddBevel(self.Holder)
+
+	self.TabsBar = New("Frame", {
+		Parent = self.Holder,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -12, 0, 20),
+		Position = UDim2.new(0, 6, 0, 6),
+	})
+	New("UIListLayout", {
+		Parent = self.TabsBar,
+		FillDirection = Enum.FillDirection.Horizontal,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 5),
+		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+	})
+
+	self.Container = New("Frame", {
+		Parent = self.Holder,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, -12, 1, -32),
+		Position = UDim2.new(0, 6, 0, 30),
+	})
+	AddBevel(self.Container)
+	New("UIListLayout", {
+		Parent = self.Container,
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+		VerticalFlex = Enum.UIFlexAlignment.Fill,
+		Padding = UDim.new(0, 5),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+
+	self.Tabs = {}
+	self._firstTab = true
+
+	return self
+end
+
+function Window:CreateTab(name)
+	local tabButton = New("Frame", {
+		Parent = self.TabsBar,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(100, 20),
+		LayoutOrder = #self.Tabs,
+	})
+	New("UIGradient", {
+		Parent = tabButton,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Theme.TitleBar),
+			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(31, 31, 31)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 30)),
+		}),
+	})
+	local label = TextLabel({
+		Parent = tabButton,
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = name,
+		TextColor3 = self._firstTab and Theme.Text or Theme.MutedText,
+	})
+
+	local page = New("Frame", {
+		Parent = self.Container,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Visible = self._firstTab,
+	})
+	New("UIListLayout", {
+		Parent = page,
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+
+	local tab = setmetatable({
+		Name = name,
+		Page = page,
+		Button = tabButton,
+		Label = label,
+		Library = self,
+		_columns = {},
+	}, Tab)
+
+	Clickable(tabButton, function()
+		for _, t in ipairs(self.Tabs) do
+			t.Page.Visible = false
+			t.Label.TextColor3 = Theme.MutedText
+		end
+		page.Visible = true
+		label.TextColor3 = Theme.Text
+	end)
+
+	self._firstTab = false
+	table.insert(self.Tabs, tab)
+	return tab
+end
+
+-- side: "Left" (default) or "Right" -- controls which column the groupbox
+-- stacks into, matching the original two-column layout.
+function Tab:CreateGroupbox(side, title)
+	side = side or "Left"
+
+	local column = self._columns[side]
+	if not column then
+		column = New("ScrollingFrame", {
+			Parent = self.Page,
+			Name = side,
+			Active = true,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(100, 100), -- resized by UIListLayout fill
+			ScrollBarThickness = 0,
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		})
+		New("UIListLayout", {
+			Parent = column,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 8),
+			HorizontalFlex = Enum.UIFlexAlignment.Fill,
+		})
+		New("UIPadding", {
+			Parent = column,
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+		})
+		self._columns[side] = column
+	end
+
+	local box = New("Frame", {
+		Parent = column,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.9,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+	})
+	AddBevel(box)
+
+	local titleBar = New("Frame", {
+		Parent = box,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 20),
+	})
+	AddFillGradient(titleBar)
+	AddBevel(titleBar)
+	TextLabel({
+		Parent = titleBar,
+		Size = UDim2.new(1, -6, 1, 0),
+		Position = UDim2.fromOffset(6, 0),
+		Text = title,
+	})
+
+	local contents = New("Frame", {
+		Parent = titleBar,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(0, 0, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+	})
+	New("UIListLayout", {
+		Parent = contents,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 4),
+		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+	})
+	New("UIPadding", {
+		Parent = contents,
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 6),
+		PaddingRight = UDim.new(0, 6),
+	})
+	AddBevel(contents)
+
+	return setmetatable({
+		Contents = contents,
+		Library = self.Library,
+	}, Groupbox)
+end
+
+--============================================================
+-- COMPONENTS
+--============================================================
+
+-- Toggle -------------------------------------------------------
+function Groupbox:AddToggle(flagName, opts, callback)
+	opts = opts or {}
+	local state = opts.Default or false
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 12),
+	})
+
+	local box = New("Frame", {
+		Parent = row,
+		BackgroundColor3 = state and Theme.Accent or Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(12, 12),
+	})
+	AddFillGradient(box)
+	AddBevel(box, state and Theme.Accent or Theme.TitleBar)
+
+	TextLabel({
+		Parent = box,
+		Position = UDim2.new(1, 6, 0, 0),
+		Size = UDim2.fromOffset(115, 12),
+		Text = opts.Text or flagName,
+	})
+
+	local function setState(newState, fire)
+		state = newState
+		box.BackgroundColor3 = state and Theme.Accent or Theme.TitleBar
+		self.Library.Flags[flagName] = state
+		if fire ~= false and callback then callback(state) end
+	end
+
+	Clickable(box, function()
+		setState(not state)
+	end)
+
+	self.Library.Flags[flagName] = state
+
+	return {
+		Set = function(_, v) setState(v) end,
+		Get = function() return state end,
+	}
+end
+
+-- Slider -------------------------------------------------------
+function Groupbox:AddSlider(flagName, opts, callback)
+	opts = opts or {}
+	local min = opts.Min or 0
+	local max = opts.Max or 100
+	local value = math.clamp(opts.Default or min, min, max)
+	local suffix = opts.Suffix or ""
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 25),
+	})
+	TextLabel({ Parent = row, Size = UDim2.fromOffset(90, 17), Text = opts.Text or flagName })
+	local valueLabel = TextLabel({
+		Parent = row,
+		Size = UDim2.fromOffset(45, 17),
+		Position = UDim2.new(1, -45, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = Theme.SubText,
+		Text = tostring(value) .. suffix,
+	})
+
+	local track = New("Frame", {
+		Parent = row,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 7),
+		Position = UDim2.new(0, 0, 1, -7),
+	})
+	AddBevel(track)
+	AddFillGradient(track)
+
+	local fill = New("Frame", {
+		Parent = track,
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+	})
+	AddFillGradient(fill)
+
+	local function setValue(v, fire)
+		value = math.clamp(math.floor(v + 0.5), min, max)
+		fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
+		valueLabel.Text = tostring(value) .. suffix
+		self.Library.Flags[flagName] = value
+		if fire ~= false and callback then callback(value) end
+	end
+
+	local dragging = false
+	track.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local relative = math.clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+			setValue(min + relative * (max - min))
+		end
+	end)
+
+	self.Library.Flags[flagName] = value
+
+	return {
+		Set = function(_, v) setValue(v) end,
+		Get = function() return value end,
+	}
+end
+
+-- Dropdown -------------------------------------------------------
+function Groupbox:AddDropdown(flagName, opts, callback)
+	opts = opts or {}
+	local options = opts.Options or {}
+	local selected = opts.Default or options[1]
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 33),
+	})
+	TextLabel({ Parent = row, Size = UDim2.new(1, 0, 0, 18), Text = opts.Text or flagName })
+
+	local button = New("Frame", {
+		Parent = row,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 15),
+		Position = UDim2.new(0, 0, 0, 18),
+	})
+	AddBevel(button, Theme.Background)
+	AddFillGradient(button)
+
+	local text = TextLabel({
+		Parent = button,
+		Size = UDim2.new(1, -20, 1, 0),
+		Position = UDim2.fromOffset(4, 0),
+		Text = tostring(selected),
+	})
+	local arrow = TextLabel({
+		Parent = button,
+		Size = UDim2.fromOffset(11, 14),
+		Position = UDim2.new(1, -14, 0, 0),
+		Text = "+",
+		TextSize = 9,
+	})
+
+	local list = New("Frame", {
+		Parent = button,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(0, 0, 1, 2),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Visible = false,
+		ZIndex = 20,
+	})
+	AddBevel(list, Theme.Background)
+	AddFillGradient(list)
+	New("UIListLayout", {
+		Parent = list,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 4),
+		HorizontalFlex = Enum.UIFlexAlignment.Fill,
+	})
+	New("UIPadding", {
+		Parent = list,
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+	})
+
+	local function setSelected(value, fire)
+		selected = value
+		text.Text = tostring(value)
+		self.Library.Flags[flagName] = value
+		if fire ~= false and callback then callback(value) end
+	end
+
+	for _, option in ipairs(options) do
+		local optionLabel = TextLabel({
+			Parent = list,
+			Size = UDim2.new(1, 0, 0, 12),
+			ZIndex = 20,
+			Text = tostring(option),
+			TextColor3 = option == selected and Theme.Accent or Theme.Text,
+		})
+		Clickable(optionLabel, function()
+			for _, child in ipairs(list:GetChildren()) do
+				if child:IsA("TextLabel") then
+					child.TextColor3 = (child.Text == tostring(option)) and Theme.Accent or Theme.Text
+				end
+			end
+			setSelected(option)
+			list.Visible = false
+		end)
+	end
+
+	Clickable(button, function()
+		list.Visible = not list.Visible
+	end)
+
+	self.Library.Flags[flagName] = selected
+
+	return {
+		Set = function(_, v) setSelected(v) end,
+		Get = function() return selected end,
+	}
+end
+
+-- Keybind -------------------------------------------------------
+function Groupbox:AddKeybind(flagName, opts, callback)
+	opts = opts or {}
+	local mode = opts.Mode or "Toggle" -- "Toggle" | "Hold" | "Always"
+	local bind = opts.Default
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 12),
+	})
+	TextLabel({
+		Parent = row,
+		Size = UDim2.fromOffset(91, 12),
+		Text = string.format('%s (<font color="rgb(255, 82, 85)">%s</font>)', opts.Text or flagName, mode:lower()),
+	})
+	local bindLabel = TextLabel({
+		Parent = row,
+		Size = UDim2.fromOffset(30, 12),
+		Position = UDim2.new(1, -30, 0, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = bind and Theme.Accent or Theme.SubText,
+		Text = bind and bind.Name or "unbinded",
+	})
+
+	local listening = false
+	Clickable(bindLabel, function()
+		listening = true
+		bindLabel.Text = "..."
+	end)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+			bind = input.KeyCode
+			bindLabel.Text = bind.Name
+			bindLabel.TextColor3 = Theme.Accent
+			listening = false
+			self.Library.Flags[flagName] = bind
+			return
+		end
+		if bind and input.KeyCode == bind then
+			if mode == "Toggle" or mode == "Hold" then
+				if callback then callback(true) end
+			end
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if mode == "Hold" and bind and input.KeyCode == bind then
+			if callback then callback(false) end
+		end
+	end)
+
+	self.Library.Flags[flagName] = bind
+
+	return {
+		Get = function() return bind end,
+	}
+end
+
+-- Button -------------------------------------------------------
+function Groupbox:AddButton(text, callback, accent)
+	local frame = New("Frame", {
+		Parent = self.Contents,
+		BackgroundColor3 = accent and Theme.Accent or Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 15),
+	})
+	AddFillGradient(frame)
+	AddBevel(frame, accent and Theme.Accent or Theme.StrokeDark)
+
+	local button = New("TextButton", {
+		Parent = frame,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		FontFace = Theme.Font,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		TextStrokeTransparency = 0,
+		RichText = true,
+		Text = text,
+	})
+
+	button.MouseButton1Click:Connect(function()
+		if callback then callback() end
+	end)
+
+	return button
+end
+
+-- Label (static text row) ---------------------------------------
+function Groupbox:AddLabel(text)
+	return TextLabel({
+		Parent = self.Contents,
+		Size = UDim2.new(1, 0, 0, 12),
+		Text = text,
+	})
+end
+
+--============================================================
+-- WATERMARK (standalone widget, not tied to a window)
+--============================================================
+
+function Library:CreateWatermark(config)
+	config = config or {}
+	local gui = New("ScreenGui", {
+		Name = "Watermark",
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		ResetOnSpawn = false,
+		Parent = LocalPlayer:WaitForChild("PlayerGui"),
+	})
+
+	local frame = New("Frame", {
+		Parent = gui,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(config.Width or 183, 20),
+		Position = config.Position or UDim2.fromOffset(10, 10),
+	})
+	AddFillGradient(frame)
+	AddBevel(frame)
+
+	local label = TextLabel({
+		Parent = frame,
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = config.Text or "",
+	})
+
+	New("Frame", {
+		Parent = frame,
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 1),
+		Position = UDim2.new(0, 0, 1, -1),
+	})
+
+	return {
+		SetText = function(_, text) label.Text = text end,
+		Destroy = function() gui:Destroy() end,
+	}
+end
+
+return Library
