@@ -161,8 +161,10 @@ Groupbox.__index = Groupbox
 function Library:CreateWindow(config)
 	config = config or {}
 
-	local self = setmetatable({}, Library)
+	local self = setmetatable({}, Window)
 	self.Flags = {} -- Flags[name] = current value, shared across all components
+	self.Configs = {} -- populated by CreateConfigList
+	self._keybindEntries = {} -- populated by AddKeybind, read by CreateKeybindsList
 
 	self.ScreenGui = New("ScreenGui", {
 		Name = config.Title or "UILibrary",
@@ -653,6 +655,18 @@ function Groupbox:AddKeybind(flagName, opts, callback)
 		Text = bind and bind.Name or "unbinded",
 	})
 
+	local toggled = false
+	local entry = {
+		FlagName = flagName,
+		DisplayText = opts.Text or flagName,
+		Mode = mode,
+		GetBind = function() return bind end,
+	}
+	table.insert(self.Library._keybindEntries, entry)
+	local function refreshKeybindsPanel()
+		if self.Library._refreshKeybindsPanel then self.Library._refreshKeybindsPanel() end
+	end
+
 	local listening = false
 	Clickable(bindLabel, function()
 		listening = true
@@ -667,11 +681,15 @@ function Groupbox:AddKeybind(flagName, opts, callback)
 			bindLabel.TextColor3 = Theme.Accent
 			listening = false
 			self.Library.Flags[flagName] = bind
+			refreshKeybindsPanel()
 			return
 		end
 		if bind and input.KeyCode == bind then
-			if mode == "Toggle" or mode == "Hold" then
+			if mode == "Hold" then
 				if callback then callback(true) end
+			elseif mode == "Toggle" then
+				toggled = not toggled
+				if callback then callback(toggled) end
 			end
 		end
 	end)
@@ -770,6 +788,409 @@ function Library:CreateWatermark(config)
 		SetText = function(_, text) label.Text = text end,
 		Destroy = function() gui:Destroy() end,
 	}
+end
+
+--============================================================
+-- COLOR PICKER (full popup: hue strip + saturation/value box + alpha)
+--============================================================
+
+function Groupbox:AddColorPicker(flagName, opts, callback)
+	opts = opts or {}
+	local hue, sat, val = Color3.toHSV(opts.Default or Color3.fromRGB(255, 161, 45))
+	local alpha = opts.Alpha ~= false and (opts.DefaultAlpha or 1) or nil
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 12),
+	})
+	TextLabel({ Parent = row, Size = UDim2.new(1, -40, 1, 0), Text = opts.Text or flagName })
+
+	local swatch = New("Frame", {
+		Parent = row,
+		BackgroundColor3 = Color3.fromHSV(hue, sat, val),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(30, 10),
+		Position = UDim2.new(1, -30, 0.5, -5),
+	})
+	AddFillGradient(swatch)
+	AddBevel(swatch, Color3.fromHSV(hue, sat, val))
+
+	-- floating popup, parented to the window's ScreenGui so it renders above everything
+	local popup = New("Frame", {
+		Parent = self.Library.ScreenGui,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(175, alpha and 178 or 160),
+		Visible = false,
+		ZIndex = 50,
+	})
+	AddFillGradient(popup)
+	AddBevel(popup)
+
+	local titleBar = New("Frame", {
+		Parent = popup,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 20),
+		ZIndex = 50,
+	})
+	AddFillGradient(titleBar)
+	AddBevel(titleBar)
+	TextLabel({ Parent = titleBar, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 50, Text = "Color Picker" })
+
+	-- saturation/value box
+	local svBox = New("Frame", {
+		Parent = popup,
+		BackgroundColor3 = Color3.fromHSV(hue, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(132, 118),
+		Position = UDim2.fromOffset(10, 30),
+		ZIndex = 50,
+	})
+	AddBevel(svBox)
+	local satOverlay = New("Frame", { Parent = svBox, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 51 })
+	New("UIGradient", { Parent = satOverlay, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
+	local valOverlay = New("Frame", { Parent = svBox, BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 52 })
+	New("UIGradient", { Parent = valOverlay, Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) })
+	local svCursor = New("Frame", {
+		Parent = svBox,
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(6, 6),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(sat, 1 - val),
+		ZIndex = 53,
+	})
+	New("UICorner", { Parent = svCursor, CornerRadius = UDim.new(1, 0) })
+	New("UIStroke", { Parent = svCursor, Color = Color3.new(0, 0, 0), Thickness = 1 })
+
+	-- hue strip
+	local hueBar = New("Frame", {
+		Parent = popup,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(12, 119),
+		Position = UDim2.fromOffset(153, 29),
+		ZIndex = 50,
+	})
+	New("UIGradient", {
+		Parent = hueBar,
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+			ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 255, 0)),
+			ColorSequenceKeypoint.new(0.30, Color3.fromRGB(0, 255, 0)),
+			ColorSequenceKeypoint.new(0.47, Color3.fromRGB(0, 255, 255)),
+			ColorSequenceKeypoint.new(0.61, Color3.fromRGB(0, 0, 255)),
+			ColorSequenceKeypoint.new(0.76, Color3.fromRGB(255, 0, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+		}),
+	})
+	AddBevel(hueBar)
+	local hueCursor = New("Frame", {
+		Parent = hueBar, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+		Size = UDim2.new(1, 4, 0, 2), AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, hue, 0), ZIndex = 51,
+	})
+	New("UIStroke", { Parent = hueCursor, Color = Color3.new(0, 0, 0), Thickness = 1 })
+
+	local alphaBar, alphaCursor
+	if alpha then
+		alphaBar = New("Frame", {
+			Parent = popup, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+			Size = UDim2.fromOffset(155, 12), Position = UDim2.fromOffset(10, 154), ZIndex = 50,
+		})
+		AddBevel(alphaBar)
+		New("UIGradient", { Parent = alphaBar, Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.new(1, 1, 1)) })
+		alphaCursor = New("Frame", {
+			Parent = alphaBar, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0,
+			Size = UDim2.new(0, 2, 1, 4), AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(alpha, 0, 0.5, 0), ZIndex = 51,
+		})
+		New("UIStroke", { Parent = alphaCursor, Color = Color3.new(0, 0, 0), Thickness = 1 })
+	end
+
+	local function currentColor()
+		return Color3.fromHSV(hue, sat, val)
+	end
+
+	local function fire()
+		local color = currentColor()
+		swatch.BackgroundColor3 = color
+		self.Library.Flags[flagName] = alpha and { Color = color, Alpha = alpha } or color
+		if callback then callback(color, alpha) end
+	end
+
+	local function updateSV(inputPos)
+		local relX = math.clamp((inputPos.X - svBox.AbsolutePosition.X) / svBox.AbsoluteSize.X, 0, 1)
+		local relY = math.clamp((inputPos.Y - svBox.AbsolutePosition.Y) / svBox.AbsoluteSize.Y, 0, 1)
+		sat, val = relX, 1 - relY
+		svCursor.Position = UDim2.fromScale(sat, 1 - val)
+		fire()
+	end
+
+	local function updateHue(inputPos)
+		local rel = math.clamp((inputPos.Y - hueBar.AbsolutePosition.Y) / hueBar.AbsoluteSize.Y, 0, 1)
+		hue = rel
+		hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
+		svBox.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+		fire()
+	end
+
+	local function updateAlpha(inputPos)
+		local rel = math.clamp((inputPos.X - alphaBar.AbsolutePosition.X) / alphaBar.AbsoluteSize.X, 0, 1)
+		alpha = rel
+		alphaCursor.Position = UDim2.new(alpha, 0, 0.5, 0)
+		fire()
+	end
+
+	local draggingSV, draggingHue, draggingAlpha = false, false, false
+	svBox.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingSV = true; updateSV(input.Position) end
+	end)
+	hueBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingHue = true; updateHue(input.Position) end
+	end)
+	if alphaBar then
+		alphaBar.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingAlpha = true; updateAlpha(input.Position) end
+		end)
+	end
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			draggingSV, draggingHue, draggingAlpha = false, false, false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+		if draggingSV then updateSV(input.Position) end
+		if draggingHue then updateHue(input.Position) end
+		if draggingAlpha then updateAlpha(input.Position) end
+	end)
+
+	Clickable(swatch, function()
+		popup.Position = UDim2.fromOffset(swatch.AbsolutePosition.X - 175 + 30, swatch.AbsolutePosition.Y)
+		popup.Visible = not popup.Visible
+	end)
+
+	self.Library.Flags[flagName] = alpha and { Color = currentColor(), Alpha = alpha } or currentColor()
+
+	return {
+		Set = function(_, color, a)
+			hue, sat, val = Color3.toHSV(color)
+			if a then alpha = a end
+			svBox.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+			svCursor.Position = UDim2.fromScale(sat, 1 - val)
+			hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
+			if alphaCursor then alphaCursor.Position = UDim2.new(alpha, 0, 0.5, 0) end
+			fire()
+		end,
+		Get = function() return currentColor(), alpha end,
+	}
+end
+
+--============================================================
+-- PREVIEW BOX (static viewport + overlay box/name/distance labels --
+-- useful for previewing an ESP-style box's look before applying it.
+-- Purely visual: no targeting, tracking, or gameplay logic.)
+--============================================================
+
+function Groupbox:AddPreview(opts)
+	opts = opts or {}
+
+	local viewport = New("ViewportFrame", {
+		Parent = self.Contents,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, opts.Height or 160),
+	})
+	AddBevel(viewport)
+
+	local dummy = New("Part", {
+		Parent = viewport,
+		Size = Vector3.new(2, 5, 1),
+		Color = Color3.fromRGB(100, 96, 99),
+		Anchored = true,
+		CanCollide = false,
+	})
+	local camera = New("Camera", { Parent = viewport, CFrame = CFrame.new(Vector3.new(0, 0, 8), Vector3.new(0, 0, 0)) })
+	viewport.CurrentCamera = camera
+
+	local box = New("Frame", {
+		Parent = viewport,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(70, 100),
+		Position = UDim2.new(0.5, -35, 0.5, -50),
+	})
+	New("UIStroke", { Parent = box, Color = opts.Color or Theme.Accent, Thickness = 1 })
+
+	TextLabel({
+		Parent = box, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, -16),
+		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = opts.Color or Theme.Accent, Text = opts.Name or "Dummy",
+	})
+	TextLabel({
+		Parent = box, Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 1, 2),
+		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = opts.Color or Theme.Accent, Text = opts.Distance or "[32st]",
+	})
+
+	return {
+		SetColor = function(_, color)
+			box.UIStroke.Color = color
+		end,
+	}
+end
+
+--============================================================
+-- CONFIG LIST (save/load Flags to a JSON file via executor file API)
+--============================================================
+
+local HttpService = game:GetService("HttpService")
+
+local function fileApiAvailable()
+	return writefile ~= nil and readfile ~= nil and isfile ~= nil and isfolder ~= nil and makefolder ~= nil and listfiles ~= nil
+end
+
+function Library:SaveConfig(name)
+	if not fileApiAvailable() then return false, "file API not available" end
+	local folder = self.ConfigFolder or "UILibrary/configs"
+	if not isfolder(folder) then makefolder(folder) end
+	local ok, encoded = pcall(HttpService.JSONEncode, HttpService, self.Flags)
+	if not ok then return false, encoded end
+	writefile(folder .. "/" .. name .. ".json", encoded)
+	return true
+end
+
+function Library:LoadConfig(name, applyCallback)
+	if not fileApiAvailable() then return false, "file API not available" end
+	local folder = self.ConfigFolder or "UILibrary/configs"
+	local path = folder .. "/" .. name .. ".json"
+	if not isfile(path) then return false, "config does not exist" end
+	local ok, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(path))
+	if not ok then return false, decoded end
+	for flag, value in pairs(decoded) do
+		self.Flags[flag] = value
+		if applyCallback then applyCallback(flag, value) end
+	end
+	return true
+end
+
+-- Adds a scrollable list of saved config names to a groupbox, each with
+-- Load / Save buttons. Silently does nothing if the executor has no
+-- file API (e.g. running in Studio).
+function Groupbox:AddConfigList(opts)
+	opts = opts or {}
+	local folder = opts.Folder or "UILibrary/configs"
+	self.Library.ConfigFolder = folder
+
+	local list = New("ScrollingFrame", {
+		Parent = self.Contents,
+		Active = true,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, opts.Height or 70),
+		ScrollBarThickness = 2,
+		ScrollBarImageColor3 = Theme.Accent,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+	})
+	AddBevel(list)
+	New("UIListLayout", { Parent = list, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), HorizontalFlex = Enum.UIFlexAlignment.Fill })
+	New("UIPadding", { Parent = list, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) })
+
+	local function refresh()
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		if not fileApiAvailable() or not isfolder(folder) then return end
+		for _, path in ipairs(listfiles(folder)) do
+			local name = path:match("([^/\\]+)%.json$")
+			if name then
+				local row = TextLabel({ Parent = list, Size = UDim2.new(1, 0, 0, 12), Text = name, TextColor3 = Theme.Accent })
+				Clickable(row, function()
+					self.Library:LoadConfig(name)
+				end)
+			end
+		end
+	end
+
+	local nameBox = New("TextBox", {
+		Parent = self.Contents,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 15),
+		FontFace = Theme.Font,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		PlaceholderText = "config name...",
+		Text = "",
+		ClearTextOnFocus = false,
+	})
+	AddBevel(nameBox)
+
+	self:AddButton("Save Config", function()
+		if nameBox.Text ~= "" then
+			self.Library:SaveConfig(nameBox.Text)
+			refresh()
+		end
+	end)
+
+	refresh()
+	return { Refresh = refresh }
+end
+
+--============================================================
+-- STANDALONE KEYBINDS PANEL (auto-updating list of all AddKeybind calls)
+--============================================================
+
+function Window:CreateKeybindsList(config)
+	config = config or {}
+
+	local frame = New("Frame", {
+		Parent = self.ScreenGui,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(config.Width or 155, 20),
+		Position = config.Position or UDim2.fromOffset(200, 50),
+	})
+	AddFillGradient(frame)
+	AddBevel(frame)
+	TextLabel({ Parent = frame, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Text = config.Title or "Keybinds" })
+
+	local contents = New("Frame", {
+		Parent = frame,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(0, 0, 1, 1),
+		AutomaticSize = Enum.AutomaticSize.Y,
+	})
+	AddBevel(contents)
+	New("UIListLayout", { Parent = contents, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), HorizontalFlex = Enum.UIFlexAlignment.Fill })
+	New("UIPadding", { Parent = contents, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) })
+
+	local function refresh()
+		for _, child in ipairs(contents:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		for _, entry in ipairs(self._keybindEntries) do
+			local bind = entry.GetBind()
+			if bind then
+				TextLabel({
+					Parent = contents,
+					Size = UDim2.new(1, 0, 0, 12),
+					TextColor3 = Theme.Accent,
+					Text = string.format("[%s] %s [%s]", bind.Name, entry.DisplayText, entry.Mode:lower()),
+				})
+			end
+		end
+		frame.Visible = #contents:GetChildren() > 1 -- hide if nothing bound (only UIListLayout/UIPadding present)
+	end
+
+	self._refreshKeybindsPanel = refresh
+	refresh()
+
+	return { Refresh = refresh, Frame = frame }
 end
 
 return Library
