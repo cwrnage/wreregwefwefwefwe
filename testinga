@@ -145,6 +145,11 @@ end
 -- True on touch-only devices (phones/tablets), false on PC/console with a mouse.
 local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
 
+-- Shared across every Window/Watermark from this loaded module, since Theme
+-- itself is a single shared upvalue -- ChangeAccent updates Theme.Accent and
+-- re-runs every refresher registered here.
+local AccentRefreshers = {}
+
 -- Picks the best place to parent our ScreenGuis so they render above Roblox's
 -- own core UI (escape menu, chat, etc.) instead of being tucked under it in
 -- PlayerGui. Prefers the executor's hidden-UI container if one's exposed,
@@ -255,6 +260,7 @@ function Library:CreateWindow(config)
 	self.Flags = {} -- Flags[name] = current value, shared across all components
 	self.Configs = {} -- populated by CreateConfigList
 	self._keybindEntries = {} -- populated by AddKeybind, read by CreateKeybindsList
+	self._flagSetters = {} -- FlagSetters[name] = function(value) -- lets LoadConfig push values into the live UI
 
 	self.ScreenGui = New("ScreenGui", {
 		Name = config.Title or "UILibrary",
@@ -449,6 +455,9 @@ function Tab:CreateGroupbox(side, title)
 			PaddingRight = UDim.new(0, 6),
 		})
 		self._columns[side] = column
+		table.insert(AccentRefreshers, function()
+			column.ScrollBarImageColor3 = Theme.Accent
+		end)
 	end
 
 	local box = New("Frame", {
@@ -548,6 +557,10 @@ function Groupbox:AddToggle(flagName, opts, callback)
 	end)
 
 	self.Library.Flags[flagName] = state
+	self.Library._flagSetters[flagName] = setState
+	table.insert(AccentRefreshers, function()
+		if state then box.BackgroundColor3 = Theme.Accent end
+	end)
 
 	return {
 		Set = function(_, v) setState(v) end,
@@ -623,6 +636,10 @@ function Groupbox:AddSlider(flagName, opts, callback)
 	end)
 
 	self.Library.Flags[flagName] = value
+	self.Library._flagSetters[flagName] = setValue
+	table.insert(AccentRefreshers, function()
+		fill.BackgroundColor3 = Theme.Accent
+	end)
 
 	return {
 		Set = function(_, v) setValue(v) end,
@@ -659,7 +676,7 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 		Position = UDim2.fromOffset(4, 0),
 		Text = tostring(selected),
 	})
-	local arrow = TextLabel({
+	TextLabel({
 		Parent = button,
 		Size = UDim2.fromOffset(11, 14),
 		Position = UDim2.new(1, -14, 0, 0),
@@ -697,24 +714,33 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 		if fire ~= false and callback then callback(value) end
 	end
 
-	for _, option in ipairs(options) do
-		local optionLabel = TextLabel({
-			Parent = list,
-			Size = UDim2.new(1, 0, 0, 12),
-			ZIndex = 50,
-			Text = tostring(option),
-			TextColor3 = option == selected and Theme.Accent or Theme.Text,
-		})
-		Clickable(optionLabel, function()
-			for _, child in ipairs(list:GetChildren()) do
-				if child:IsA("TextLabel") then
-					child.TextColor3 = (child.Text == tostring(option)) and Theme.Accent or Theme.Text
+	-- (Re)builds the option rows from the `options` list. Used at creation
+	-- and whenever :Refresh(newOptions) is called (e.g. after saving/deleting
+	-- a config, to repopulate a "Saved Configs" dropdown).
+	local function rebuildOptions()
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("TextLabel") then child:Destroy() end
+		end
+		for _, option in ipairs(options) do
+			local optionLabel = TextLabel({
+				Parent = list,
+				Size = UDim2.new(1, 0, 0, 12),
+				ZIndex = 50,
+				Text = tostring(option),
+				TextColor3 = option == selected and Theme.Accent or Theme.Text,
+			})
+			Clickable(optionLabel, function()
+				for _, child2 in ipairs(list:GetChildren()) do
+					if child2:IsA("TextLabel") then
+						child2.TextColor3 = (child2.Text == tostring(option)) and Theme.Accent or Theme.Text
+					end
 				end
-			end
-			setSelected(option)
-			list.Visible = false
-		end)
+				setSelected(option)
+				list.Visible = false
+			end)
+		end
 	end
+	rebuildOptions()
 
 	local function openList()
 		list.Size = UDim2.fromOffset(button.AbsoluteSize.X, 0)
@@ -740,10 +766,26 @@ function Groupbox:AddDropdown(flagName, opts, callback)
 	end)
 
 	self.Library.Flags[flagName] = selected
+	self.Library._flagSetters[flagName] = setSelected
+	table.insert(AccentRefreshers, function()
+		for _, child in ipairs(list:GetChildren()) do
+			if child:IsA("TextLabel") and child.Text == tostring(selected) then
+				child.TextColor3 = Theme.Accent
+			end
+		end
+	end)
 
 	return {
 		Set = function(_, v) setSelected(v) end,
 		Get = function() return selected end,
+		Refresh = function(_, newOptions)
+			options = newOptions or {}
+			if not table.find(options, selected) then
+				selected = options[1]
+			end
+			rebuildOptions()
+			setSelected(selected, false)
+		end,
 	}
 end
 
@@ -817,9 +859,22 @@ function Groupbox:AddKeybind(flagName, opts, callback)
 		end
 	end)
 
+	local function setBind(newBind)
+		bind = newBind
+		bindLabel.Text = bind and bind.Name or "unbinded"
+		bindLabel.TextColor3 = bind and Theme.Accent or Theme.SubText
+		self.Library.Flags[flagName] = bind
+		refreshKeybindsPanel()
+	end
+
 	self.Library.Flags[flagName] = bind
+	self.Library._flagSetters[flagName] = setBind
+	table.insert(AccentRefreshers, function()
+		if bind then bindLabel.TextColor3 = Theme.Accent end
+	end)
 
 	return {
+		Set = function(_, v) setBind(v) end,
 		Get = function() return bind end,
 	}
 end
@@ -834,6 +889,11 @@ function Groupbox:AddButton(text, callback, accent)
 	})
 	AddFillGradient(frame)
 	AddBevel(frame, accent and Theme.Accent or Theme.StrokeDark)
+	if accent then
+		table.insert(AccentRefreshers, function()
+			frame.BackgroundColor3 = Theme.Accent
+		end)
+	end
 
 	local button = New("TextButton", {
 		Parent = frame,
@@ -861,6 +921,57 @@ function Groupbox:AddLabel(text)
 		Size = UDim2.new(1, 0, 0, 12),
 		Text = text,
 	})
+end
+
+-- Textbox -------------------------------------------------------
+function Groupbox:AddTextbox(flagName, opts, callback)
+	opts = opts or {}
+	local value = opts.Default or ""
+
+	local row = New("Frame", {
+		Parent = self.Contents,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 27),
+	})
+	TextLabel({ Parent = row, Size = UDim2.new(1, 0, 0, 12), Text = opts.Text or flagName })
+
+	local box = New("TextBox", {
+		Parent = row,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 15),
+		Position = UDim2.new(0, 0, 0, 12),
+		FontFace = Theme.Font,
+		TextSize = 12,
+		TextColor3 = Theme.Text,
+		PlaceholderText = opts.Placeholder or "",
+		PlaceholderColor3 = Theme.SubText,
+		ClearTextOnFocus = false,
+		Text = value,
+	})
+	AddBevel(box, Theme.Background)
+	AddFillGradient(box)
+
+	local function setValue(v, fire)
+		value = v
+		box.Text = v
+		self.Library.Flags[flagName] = v
+		if fire ~= false and callback then callback(v) end
+	end
+
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		value = box.Text
+		self.Library.Flags[flagName] = value
+		if callback then callback(value) end
+	end)
+
+	self.Library.Flags[flagName] = value
+	self.Library._flagSetters[flagName] = setValue
+
+	return {
+		Set = function(_, v) setValue(v) end,
+		Get = function() return value end,
+	}
 end
 
 --============================================================
@@ -894,13 +1005,16 @@ function Library:CreateWatermark(config)
 		Text = config.Text or "",
 	})
 
-	New("Frame", {
+	local accentBar = New("Frame", {
 		Parent = frame,
 		BackgroundColor3 = Theme.Accent,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 1),
 		Position = UDim2.new(0, 0, 1, -1),
 	})
+	table.insert(AccentRefreshers, function()
+		accentBar.BackgroundColor3 = Theme.Accent
+	end)
 	MakeDraggable(frame, frame)
 
 	return {
@@ -1109,16 +1223,29 @@ function Groupbox:AddColorPicker(flagName, opts, callback)
 
 	self.Library.Flags[flagName] = alpha and { Color = currentColor(), Alpha = alpha } or currentColor()
 
+	local function applyColor(color, a)
+		hue, sat, val = Color3.toHSV(color)
+		if a then alpha = a end
+		svBox.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+		svCursor.Position = UDim2.fromScale(sat, 1 - val)
+		hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
+		if alphaCursor then alphaCursor.Position = UDim2.new(alpha, 0, 0.5, 0) end
+		fire()
+	end
+
+	-- Single-argument form for the flag-setter registry (LoadConfig calls
+	-- setters with just the deserialized value, which may be a plain Color3
+	-- or the {Color, Alpha} shape this component stores in Flags).
+	self.Library._flagSetters[flagName] = function(value)
+		if typeof(value) == "table" then
+			applyColor(value.Color, value.Alpha)
+		else
+			applyColor(value)
+		end
+	end
+
 	return {
-		Set = function(_, color, a)
-			hue, sat, val = Color3.toHSV(color)
-			if a then alpha = a end
-			svBox.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-			svCursor.Position = UDim2.fromScale(sat, 1 - val)
-			hueCursor.Position = UDim2.new(0.5, 0, hue, 0)
-			if alphaCursor then alphaCursor.Position = UDim2.new(alpha, 0, 0.5, 0) end
-			fire()
-		end,
+		Set = function(_, color, a) applyColor(color, a) end,
 		Get = function() return currentColor(), alpha end,
 	}
 end
@@ -1176,7 +1303,7 @@ function Groupbox:AddPreview(opts)
 end
 
 --============================================================
--- CONFIG LIST (save/load Flags to a JSON file via executor file API)
+-- CONFIG (string-based: GetConfig() / LoadConfig(data)) + THEME + NOTIFICATIONS
 --============================================================
 
 local HttpService = game:GetService("HttpService")
@@ -1185,92 +1312,196 @@ local function fileApiAvailable()
 	return writefile ~= nil and readfile ~= nil and isfile ~= nil and isfolder ~= nil and makefolder ~= nil and listfiles ~= nil
 end
 
-function Library:SaveConfig(name)
-	if not fileApiAvailable() then return false, "file API not available" end
-	local folder = self.ConfigFolder or "UILibrary/configs"
-	if not isfolder(folder) then makefolder(folder) end
-	local ok, encoded = pcall(HttpService.JSONEncode, HttpService, self.Flags)
-	if not ok then return false, encoded end
-	writefile(folder .. "/" .. name .. ".json", encoded)
-	return true
+-- Color3/EnumItem values aren't JSON-safe on their own, so we wrap them in a
+-- tagged table going out and unwrap on the way back in.
+local function SerializeValue(value)
+	local kind = typeof(value)
+	if kind == "Color3" then
+		return { __type = "Color3", R = value.R, G = value.G, B = value.B }
+	elseif kind == "EnumItem" then
+		return { __type = "Enum", EnumType = tostring(value.EnumType), Name = value.Name }
+	elseif kind == "table" then
+		local out = {}
+		for k, v in pairs(value) do out[k] = SerializeValue(v) end
+		return out
+	else
+		return value
+	end
 end
 
-function Library:LoadConfig(name, applyCallback)
-	if not fileApiAvailable() then return false, "file API not available" end
-	local folder = self.ConfigFolder or "UILibrary/configs"
-	local path = folder .. "/" .. name .. ".json"
-	if not isfile(path) then return false, "config does not exist" end
-	local ok, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(path))
+local function DeserializeValue(value)
+	if typeof(value) == "table" then
+		if value.__type == "Color3" then
+			return Color3.new(value.R, value.G, value.B)
+		elseif value.__type == "Enum" then
+			return Enum[value.EnumType][value.Name]
+		else
+			local out = {}
+			for k, v in pairs(value) do out[k] = DeserializeValue(v) end
+			return out
+		end
+	else
+		return value
+	end
+end
+
+-- Returns the current Flags table as a JSON string.
+function Window:GetConfig()
+	local serialized = {}
+	for flag, value in pairs(self.Flags) do
+		serialized[flag] = SerializeValue(value)
+	end
+	local ok, encoded = pcall(HttpService.JSONEncode, HttpService, serialized)
+	if ok then return encoded end
+	return "{}"
+end
+
+-- Accepts a JSON string (e.g. from readfile), applies it to Flags, and
+-- pushes each value into its live component if one registered a setter.
+function Window:LoadConfig(data)
+	local ok, decoded = pcall(HttpService.JSONDecode, HttpService, data)
 	if not ok then return false, decoded end
-	for flag, value in pairs(decoded) do
+	for flag, raw in pairs(decoded) do
+		local value = DeserializeValue(raw)
 		self.Flags[flag] = value
-		if applyCallback then applyCallback(flag, value) end
+		local setter = self._flagSetters[flag]
+		if setter then pcall(setter, value) end
 	end
 	return true
 end
 
--- Adds a scrollable list of saved config names to a groupbox, each with
--- Load / Save buttons. Silently does nothing if the executor has no
--- file API (e.g. running in Studio).
+-- Live theme switching: updates the shared accent color and re-runs every
+-- registered refresher (toggles, sliders, buttons, scrollbars, watermark...).
+-- Only affects the color of already-built components; the window Title's
+-- accent word is set once at creation and won't retroactively recolor.
+function Window:ChangeAccent(color)
+	Theme.Accent = color
+	for _, refresh in ipairs(AccentRefreshers) do
+		pcall(refresh)
+	end
+end
+
+-- Small toast notification, stacked top-right, auto-dismissed after `duration` seconds.
+function Window:Notification(message, duration)
+	duration = duration or 3
+	if not self._notifyContainer then
+		self._notifyContainer = New("Frame", {
+			Parent = self.ScreenGui,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, 220, 1, -20),
+			Position = UDim2.new(1, -230, 0, 10),
+			ZIndex = 60,
+		})
+		New("UIListLayout", {
+			Parent = self._notifyContainer,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 6),
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		})
+	end
+
+	local toast = New("Frame", {
+		Parent = self._notifyContainer,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ZIndex = 60,
+	})
+	AddBevel(toast)
+	AddFillGradient(toast)
+	TextLabel({
+		Parent = toast,
+		Size = UDim2.new(1, -8, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.fromOffset(4, 2),
+		TextWrapped = true,
+		ZIndex = 60,
+		Text = message,
+	})
+	New("UIPadding", { Parent = toast, PaddingBottom = UDim.new(0, 4) })
+
+	task.delay(duration, function()
+		if toast then toast:Destroy() end
+	end)
+end
+
+-- Adds a Save / Load / Delete / Refresh config UI to a groupbox: a name
+-- textbox, a dropdown of existing config names, and the four buttons.
+-- Files are written as `<Folder>/<name><Extension>` containing the JSON
+-- string from GetConfig(). Silently no-ops if the executor has no file API
+-- (e.g. running in Studio).
 function Groupbox:AddConfigList(opts)
 	opts = opts or {}
 	local folder = opts.Folder or "UILibrary/configs"
-	self.Library.ConfigFolder = folder
+	local extension = opts.Extension or ".cfg"
 
-	local list = New("ScrollingFrame", {
-		Parent = self.Contents,
-		Active = true,
-		BackgroundColor3 = Theme.Background,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, opts.Height or 70),
-		ScrollBarThickness = 2,
-		ScrollBarImageColor3 = Theme.Accent,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-	})
-	AddBevel(list)
-	New("UIListLayout", { Parent = list, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), HorizontalFlex = Enum.UIFlexAlignment.Fill })
-	New("UIPadding", { Parent = list, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) })
-
-	local function refresh()
-		for _, child in ipairs(list:GetChildren()) do
-			if child:IsA("TextLabel") then child:Destroy() end
-		end
-		if not fileApiAvailable() or not isfolder(folder) then return end
-		for _, path in ipairs(listfiles(folder)) do
-			local name = path:match("([^/\\]+)%.json$")
-			if name then
-				local row = TextLabel({ Parent = list, Size = UDim2.new(1, 0, 0, 12), Text = name, TextColor3 = Theme.Accent })
-				Clickable(row, function()
-					self.Library:LoadConfig(name)
-				end)
-			end
-		end
+	if fileApiAvailable() and not isfolder(folder) then
+		pcall(makefolder, folder)
 	end
 
-	local nameBox = New("TextBox", {
-		Parent = self.Contents,
-		BackgroundColor3 = Theme.Background,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 15),
-		FontFace = Theme.Font,
-		TextSize = 12,
-		TextColor3 = Theme.Text,
-		PlaceholderText = "config name...",
-		Text = "",
-		ClearTextOnFocus = false,
-	})
-	AddBevel(nameBox)
+	local function listConfigNames()
+		local names = {}
+		if fileApiAvailable() and isfolder(folder) then
+			pcall(function()
+				for _, path in ipairs(listfiles(folder)) do
+					local name = path:match("([^/\\]+)$")
+					if name and name:sub(-#extension) == extension then
+						table.insert(names, name:sub(1, -#extension - 1))
+					end
+				end
+			end)
+		end
+		if #names == 0 then table.insert(names, "No configs") end
+		return names
+	end
 
+	self:AddTextbox("config_name_input", { Text = "Config Name", Placeholder = "MyConfig" })
+
+	local configDropdown
 	self:AddButton("Save Config", function()
-		if nameBox.Text ~= "" then
-			self.Library:SaveConfig(nameBox.Text)
-			refresh()
+		local name = self.Library.Flags["config_name_input"]
+		if not name or name == "" then
+			self.Library:Notification("Enter a config name first.", 2)
+			return
+		end
+		if fileApiAvailable() then
+			pcall(writefile, folder .. "/" .. name .. extension, self.Library:GetConfig())
+		end
+		self.Library:Notification("Saved: " .. name, 2)
+		configDropdown:Refresh(listConfigNames())
+	end)
+
+	configDropdown = self:AddDropdown("config_selected", { Text = "Saved Configs", Options = listConfigNames() })
+
+	self:AddButton("Load Config", function()
+		local name = self.Library.Flags["config_selected"]
+		if name and name ~= "No configs" and fileApiAvailable() then
+			local path = folder .. "/" .. name .. extension
+			if isfile(path) then
+				self.Library:LoadConfig(readfile(path))
+				self.Library:Notification("Loaded: " .. name, 2)
+			end
 		end
 	end)
 
-	refresh()
-	return { Refresh = refresh }
+	self:AddButton("Refresh List", function()
+		configDropdown:Refresh(listConfigNames())
+	end)
+
+	self:AddButton("Delete Config", function()
+		local name = self.Library.Flags["config_selected"]
+		if name and name ~= "No configs" and fileApiAvailable() then
+			local path = folder .. "/" .. name .. extension
+			if isfile(path) then
+				pcall(delfile, path)
+				configDropdown:Refresh(listConfigNames())
+				self.Library:Notification("Deleted: " .. name, 2)
+			end
+		end
+	end)
+
+	return { Refresh = function() configDropdown:Refresh(listConfigNames()) end }
 end
 
 --============================================================
