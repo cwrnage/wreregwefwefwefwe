@@ -33,6 +33,34 @@ local LocalPlayer = Players.LocalPlayer
 -- THEME
 --============================================================
 
+local ZEKTON_FONT_URL = "https://github.com/LuckyHub1/LuckyHub/raw/main/zekton_rg.ttf"
+
+-- Roblox's Font.new() only accepts rbxasset:// / rbxassetid:// paths, not
+-- arbitrary web URLs. This downloads the ttf once, caches it locally, and
+-- converts it to a usable content id via getcustomasset (Synapse X,
+-- Script-Ware, KRNL, Fluxus, etc. all expose this). Falls back to the
+-- built-in Tahoma-XP font if the executor doesn't support custom fonts.
+local function LoadCustomFont(url, weight, style)
+	weight = weight or Enum.FontWeight.Regular
+	style = style or Enum.FontStyle.Normal
+
+	local ok, fontOrError = pcall(function()
+		assert(getcustomasset, "getcustomasset not supported by this executor")
+		local folder = "UILibrary/fonts"
+		if not isfolder(folder) then makefolder(folder) end
+		local filename = url:match("([^/]+)$") or "font.ttf"
+		local path = folder .. "/" .. filename
+		if not isfile(path) then
+			writefile(path, game:HttpGet(url))
+		end
+		return Font.new(getcustomasset(path), weight, style)
+	end)
+
+	if ok then return fontOrError end
+	warn("[UILibrary] Failed to load custom font (" .. tostring(fontOrError) .. "), falling back to Tahoma-XP")
+	return Font.new("rbxasset://fonts/families/windows-xp-tahoma.json", weight, style)
+end
+
 local Theme = {
 	Background   = Color3.fromRGB(28, 28, 28),
 	Section      = Color3.fromRGB(43, 43, 43),
@@ -43,7 +71,7 @@ local Theme = {
 	Text         = Color3.fromRGB(255, 255, 255),
 	SubText      = Color3.fromRGB(209, 209, 209),
 	MutedText    = Color3.fromRGB(131, 131, 131),
-	Font         = Font.new("rbxasset://fonts/families/windows-xp-tahoma.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
+	Font         = LoadCustomFont(ZEKTON_FONT_URL),
 }
 
 --============================================================
