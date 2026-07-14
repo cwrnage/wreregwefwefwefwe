@@ -43,7 +43,7 @@ local Theme = {
 	Text         = Color3.fromRGB(255, 255, 255),
 	SubText      = Color3.fromRGB(209, 209, 209),
 	MutedText    = Color3.fromRGB(131, 131, 131),
-	Font         = Font.new("rbxasset://fonts/families/windows-xp-tahoma.json"),
+	Font         = Font.new("rbxasset://fonts/families/windows-xp-tahoma.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal),
 }
 
 --============================================================
@@ -367,22 +367,80 @@ function Window:CreateTab(name)
 		Size = UDim2.fromOffset(100, 20),
 		LayoutOrder = #self.Tabs,
 	})
+	New("UIStroke", { Parent = tabButton, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }) -- plain outer border
 	New("UIGradient", {
 		Parent = tabButton,
 		Rotation = 90,
 		Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Theme.TitleBar),
-			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(31, 31, 31)),
+			ColorSequenceKeypoint.new(0.747, Color3.fromRGB(31, 31, 31)),
 			ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 30, 30)),
 		}),
 	})
+	local innerStroke = New("UIStroke", {
+		Parent = tabButton,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		BorderStrokePosition = Enum.BorderStrokePosition.Inner,
+	})
+	local innerStrokeGradient -- only present while unselected
+
 	local label = TextLabel({
 		Parent = tabButton,
 		Size = UDim2.fromScale(1, 1),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Text = name,
-		TextColor3 = self._firstTab and Theme.Text or Theme.MutedText,
 	})
+
+	-- Dark bar under the active tab that visually merges it into the content
+	-- area below, plus two tiny corner accents -- all hidden unless selected.
+	local connector = New("Frame", {
+		Parent = tabButton,
+		BackgroundColor3 = Theme.Background,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, -2, 0, 3),
+		Position = UDim2.new(0, 1, 1, -1),
+		Visible = false,
+	})
+	local cornerL = New("Frame", {
+		Parent = tabButton,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(1, 1),
+		Position = UDim2.new(0, 0, 1.1, -2),
+		Visible = false,
+	})
+	local cornerR = New("Frame", {
+		Parent = tabButton,
+		BackgroundColor3 = Theme.TitleBar,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(1, 7),
+		Position = UDim2.new(1, -1, 1.284, -11),
+		Visible = false,
+	})
+
+	local function setSelected(selected)
+		label.TextColor3 = selected and Theme.Text or Theme.MutedText
+		connector.Visible = selected
+		cornerL.Visible = selected
+		cornerR.Visible = selected
+		if selected then
+			innerStroke.Color = Theme.TitleBar
+			if innerStrokeGradient then innerStrokeGradient:Destroy(); innerStrokeGradient = nil end
+		else
+			innerStroke.Color = Color3.fromRGB(212, 212, 212)
+			if not innerStrokeGradient then
+				innerStrokeGradient = New("UIGradient", {
+					Parent = innerStroke,
+					Rotation = 90,
+					Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 90, 90)),
+						ColorSequenceKeypoint.new(1, Color3.fromRGB(25, 25, 25)),
+					}),
+				})
+			end
+		end
+	end
+	setSelected(self._firstTab)
 
 	local page = New("Frame", {
 		Parent = self.Container,
@@ -406,15 +464,16 @@ function Window:CreateTab(name)
 		Label = label,
 		Library = self,
 		_columns = {},
+		_setSelected = setSelected,
 	}, Tab)
 
 	Clickable(tabButton, function()
 		for _, t in ipairs(self.Tabs) do
 			t.Page.Visible = false
-			t.Label.TextColor3 = Theme.MutedText
+			t._setSelected(false)
 		end
 		page.Visible = true
-		label.TextColor3 = Theme.Text
+		setSelected(true)
 	end)
 
 	self._firstTab = false
